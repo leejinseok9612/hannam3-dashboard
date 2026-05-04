@@ -1,0 +1,4645 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>현장 디지털 트윈 대시보드 v2</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet"/>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"
+  onerror="console.error('[Firebase] firebase-app-compat.js 로드 실패')"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js"
+  onerror="console.error('[Firebase] firebase-database-compat.js 로드 실패')"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="https://unpkg.com/lucide@0.344.0/dist/umd/lucide.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<style>
+/* ═══════════════════════════════════════════════════════════
+   DESIGN TOKENS — Slate + Electric Blue Glassmorphism
+═══════════════════════════════════════════════════════════ */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
+:root{
+  /* Base */
+  --bg:      #0f172a;
+  --bg2:     #1e293b;
+  --card:    rgba(30,41,59,0.7);
+  --card-solid: #1e293b;
+  /* Borders */
+  --border:  rgba(148,163,184,0.1);
+  --border2: rgba(148,163,184,0.2);
+  /* Accent */
+  --accent:  #3b82f6;
+  --accent2: #2563eb;
+  --accent-glow: rgba(59,130,246,0.3);
+  /* Text */
+  --text:    #f1f5f9;
+  --muted:   #64748b;
+  /* Status */
+  --green:   #10b981;
+  --yellow:  #f59e0b;
+  --red:     #ef4444;
+  --orange:  #f97316;
+  --purple:  #8b5cf6;
+  --sim:     #f97316;
+  /* Glass */
+  --glass:      rgba(15,23,42,0.75);
+  --glass-card: rgba(30,41,59,0.6);
+}
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%;overflow:hidden}
+body{
+  font-family:'Inter',system-ui,-apple-system,sans-serif;
+  background:var(--bg);color:var(--text);
+  -webkit-font-smoothing:antialiased;
+}
+
+/* ── MAP ─────────────────────────────────────────────────── */
+#map{
+  position:fixed;inset:0;background:#080f1e;z-index:1;
+}
+.leaflet-container{background:#080f1e!important}
+/* ── 부드러운 줌 렌더링 ── */
+.map-image-smooth{
+  image-rendering: auto;
+}
+/* SVG 오버레이: 배경 투명 보장 */
+.leaflet-image-layer{
+  background: transparent !important;
+}
+/* 모바일 핀치줌 터치 응답성 향상 */
+.leaflet-container{
+  -webkit-tap-highlight-color: transparent;
+  touch-action: none;
+}
+
+/* Custom Leaflet zoom controls */
+.leaflet-control-zoom{
+  border:1px solid var(--border2)!important;
+  border-radius:12px!important;overflow:hidden;
+  box-shadow:0 8px 32px rgba(0,0,0,.5),0 0 0 1px rgba(59,130,246,.08)!important;
+  backdrop-filter:blur(12px)!important;
+}
+.leaflet-control-zoom a{
+  color:var(--text)!important;
+  background:rgba(15,23,42,.92)!important;
+  border-color:var(--border)!important;
+  width:34px!important;height:34px!important;line-height:34px!important;
+  font-size:16px!important;font-weight:300!important;
+  transition:all .18s!important;
+}
+.leaflet-control-zoom a:hover{
+  background:rgba(59,130,246,.15)!important;
+  color:var(--accent)!important;
+}
+.leaflet-tooltip{background:transparent!important;border:none!important;box-shadow:none!important;padding:0!important}
+.leaflet-popup-content-wrapper{
+  background:rgba(15,23,42,.97)!important;
+  border:1px solid var(--border2)!important;
+  border-radius:14px!important;
+  color:var(--text)!important;
+  box-shadow:0 20px 60px rgba(0,0,0,.7),0 0 0 1px rgba(59,130,246,.1)!important;
+  backdrop-filter:blur(20px)!important;
+}
+.leaflet-popup-tip{background:rgba(15,23,42,.97)!important}
+.leaflet-popup-close-button{color:var(--muted)!important}
+
+/* ── TOPBAR ──────────────────────────────────────────────── */
+#topbar{
+  position:fixed;top:0;left:0;right:0;height:54px;
+  background:rgba(9,14,26,.88);
+  border-bottom:1px solid var(--border);
+  z-index:900;display:flex;align-items:center;
+  padding:0 20px;gap:16px;
+  backdrop-filter:blur(24px) saturate(160%);
+  -webkit-backdrop-filter:blur(24px) saturate(160%);
+}
+.tb-logo{
+  display:flex;align-items:center;gap:10px;
+  font-size:13px;font-weight:700;color:var(--text);
+  white-space:nowrap;letter-spacing:-.3px;
+}
+.tb-icon{
+  width:32px;height:32px;border-radius:9px;
+  background:linear-gradient(135deg,rgba(59,130,246,.25),rgba(59,130,246,.05));
+  border:1px solid rgba(59,130,246,.3);
+  display:flex;align-items:center;justify-content:center;font-size:15px;
+  box-shadow:0 0 12px rgba(59,130,246,.15);
+}
+.tb-div{width:1px;height:20px;background:var(--border);flex-shrink:0}
+.tb-sub{font-size:11px;color:var(--muted);white-space:nowrap;letter-spacing:-.1px}
+.tb-right{margin-left:auto;display:flex;align-items:center;gap:10px}
+.tb-pill{
+  display:flex;align-items:center;gap:6px;padding:4px 12px;
+  border-radius:20px;border:1px solid var(--border);
+  background:rgba(255,255,255,.03);font-size:10.5px;color:var(--muted);
+  letter-spacing:.2px;font-weight:500;
+}
+.live-dot{
+  width:6px;height:6px;border-radius:50%;background:var(--green);
+  box-shadow:0 0 8px var(--green);animation:pulse 2s ease infinite;
+}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.25}}
+
+/* Presence UI — 접속자 아바타 */
+#presence-wrap{display:flex;align-items:center;gap:0}
+.presence-avatar{
+  width:28px;height:28px;border-radius:50%;
+  border:2px solid var(--bg);
+  background:linear-gradient(135deg,var(--accent),var(--purple));
+  display:flex;align-items:center;justify-content:center;
+  font-size:11px;font-weight:700;color:#fff;
+  margin-left:-8px;cursor:default;
+  box-shadow:0 0 0 1px var(--border2);
+  transition:transform .2s,box-shadow .2s;
+  position:relative;z-index:1;
+  letter-spacing:0;
+}
+.presence-avatar:first-child{margin-left:0}
+.presence-avatar:hover{transform:translateY(-3px) scale(1.1);z-index:5;box-shadow:0 4px 14px rgba(59,130,246,.5)}
+.presence-avatar.you{background:linear-gradient(135deg,#10b981,#3b82f6)}
+.presence-avatar.other1{background:linear-gradient(135deg,#f59e0b,#ef4444)}
+.presence-avatar.other2{background:linear-gradient(135deg,#8b5cf6,#ec4899)}
+.presence-count{
+  width:28px;height:28px;border-radius:50%;
+  background:rgba(255,255,255,.06);border:2px solid var(--border2);
+  display:flex;align-items:center;justify-content:center;
+  font-size:10px;font-weight:600;color:var(--muted);
+  margin-left:-8px;
+}
+
+#sim-badge{
+  display:none;align-items:center;gap:6px;
+  padding:4px 12px;border-radius:20px;
+  border:1px solid rgba(249,115,22,.35);
+  background:rgba(249,115,22,.08);
+  font-size:10.5px;color:var(--sim);font-weight:600;
+  animation:sim-blink 1.4s ease infinite;letter-spacing:.3px;
+}
+#sim-badge.show{display:flex}
+@keyframes sim-blink{0%,100%{opacity:1}50%{opacity:.45}}
+#clock{
+  font-size:11.5px;color:var(--muted);font-variant-numeric:tabular-nums;
+  padding:4px 12px;border-radius:8px;
+  background:rgba(255,255,255,.03);border:1px solid var(--border);
+  font-weight:500;letter-spacing:.3px;
+}
+
+/* ── LEFT SIDEBAR ────────────────────────────────────────── */
+#sidebar{
+  position:fixed;top:54px;left:0;width:240px;bottom:0;
+  background:rgba(9,14,26,.85);
+  border-right:1px solid var(--border);
+  z-index:500;display:flex;flex-direction:column;
+  backdrop-filter:blur(24px) saturate(160%);
+  -webkit-backdrop-filter:blur(24px) saturate(160%);
+  transition:transform .32s cubic-bezier(.16,1,.3,1);
+}
+#sb-btn{
+  position:fixed;top:54px;left:240px;width:16px;height:42px;
+  background:rgba(9,14,26,.85);border:1px solid var(--border);border-left:none;
+  border-radius:0 8px 8px 0;z-index:501;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;
+  color:var(--muted);font-size:8px;transition:all .32s cubic-bezier(.16,1,.3,1);
+  backdrop-filter:blur(12px);
+}
+#sb-btn:hover{background:rgba(59,130,246,.12);color:var(--accent)}
+.sb-blk{
+  padding:14px 14px 12px;
+  border-bottom:1px solid var(--border);
+  flex-shrink:0;
+}
+/* 범례 리스트 스크롤 (5개 기준) */
+#legend-list{
+  max-height:210px; /* lg-row ~38px × 5 + 여유 */
+  overflow-y:auto;
+  overflow-x:hidden;
+  padding-right:2px;
+}
+#legend-list::-webkit-scrollbar{width:3px}
+#legend-list::-webkit-scrollbar-track{background:transparent}
+#legend-list::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px}
+.sb-head{
+  font-size:9px;font-weight:700;color:var(--muted);
+  letter-spacing:1.5px;text-transform:uppercase;margin-bottom:10px;
+}
+
+/* Legend rows */
+.lg-row{
+  display:flex;align-items:center;gap:8px;padding:7px 9px;
+  border-radius:9px;border:1px solid transparent;cursor:pointer;
+  margin-bottom:3px;transition:all .2s;user-select:none;
+}
+.lg-row:hover{background:rgba(59,130,246,.07);border-color:rgba(59,130,246,.15)}
+.lg-row.on{background:rgba(59,130,246,.08);border-color:rgba(59,130,246,.2)}
+.lg-row.off{opacity:.35}
+.lg-ico{
+  width:28px;height:28px;border-radius:8px;
+  display:flex;align-items:center;justify-content:center;
+  font-size:13px;flex-shrink:0;
+  background:rgba(255,255,255,.04);border:1px solid var(--border);
+}
+.lg-lbl{font-size:11.5px;flex:1;font-weight:500;letter-spacing:-.1px}
+.sw{
+  width:28px;height:15px;border-radius:8px;background:rgba(255,255,255,.1);
+  position:relative;transition:background .2s;flex-shrink:0;cursor:pointer;
+}
+.sw.on{background:var(--accent)}
+.sw::after{
+  content:'';position:absolute;width:11px;height:11px;border-radius:50%;
+  background:#fff;top:2px;left:2px;transition:transform .2s;
+  box-shadow:0 1px 4px rgba(0,0,0,.3);
+}
+.sw.on::after{transform:translateX(13px)}
+
+/* Draw button */
+.draw-btn{
+  width:22px;height:22px;border-radius:6px;border:1px solid var(--border);
+  background:rgba(255,255,255,.03);cursor:pointer;display:flex;align-items:center;
+  justify-content:center;font-size:11px;flex-shrink:0;transition:all .2s;
+  color:var(--muted);line-height:1;
+}
+.draw-btn:hover{background:rgba(59,130,246,.12);border-color:var(--accent);color:var(--accent)}
+.draw-btn.active{
+  background:rgba(59,130,246,.18);border-color:var(--accent);
+  box-shadow:0 0 10px rgba(59,130,246,.35);animation:pulse 1.2s ease infinite;
+}
+#draw-hint{
+  position:fixed;bottom:78px;left:50%;transform:translateX(-50%);
+  background:rgba(9,14,26,.95);border:1px solid var(--border2);
+  border-radius:12px;padding:10px 18px;font-size:12px;color:var(--text);
+  z-index:700;display:none;gap:12px;align-items:center;
+  white-space:nowrap;backdrop-filter:blur(20px);
+  box-shadow:0 8px 40px rgba(0,0,0,.6),0 0 0 1px rgba(59,130,246,.08);
+}
+#draw-hint.show{display:flex}
+#draw-hint .dh-btns{display:flex;gap:6px}
+#draw-hint .dh-btns button{
+  border-radius:7px;padding:4px 12px;cursor:pointer;
+  font-size:11px;font-weight:600;font-family:inherit;
+  transition:all .18s;
+}
+#draw-hint .dh-btns button:active{transform:scale(.95)}
+
+/* Zone list */
+.sb-scroll{flex:1;overflow-y:auto;padding:4px 14px 12px}
+.sb-scroll::-webkit-scrollbar{width:2px}
+.sb-scroll::-webkit-scrollbar-thumb{background:var(--border2);border-radius:1px}
+.zn-card{
+  display:flex;align-items:center;gap:10px;padding:10px 11px;
+  border-radius:11px;border:1px solid var(--border);
+  background:rgba(30,41,59,.3);cursor:pointer;margin-bottom:6px;
+  transition:all .22s cubic-bezier(.16,1,.3,1);
+  position:relative;overflow:hidden;
+}
+.zn-card::before{
+  content:'';position:absolute;inset:0;
+  background:linear-gradient(135deg,rgba(59,130,246,.04),transparent);
+  opacity:0;transition:opacity .22s;
+}
+.zn-card:hover{
+  background:rgba(59,130,246,.08);border-color:rgba(59,130,246,.25);
+  transform:translateX(3px);
+  box-shadow:0 4px 20px rgba(0,0,0,.25);
+}
+.zn-card:hover::before{opacity:1}
+.zn-badge{
+  width:30px;height:30px;border-radius:8px;display:flex;align-items:center;
+  justify-content:center;font-size:13px;font-weight:800;flex-shrink:0;
+  box-shadow:0 2px 8px rgba(0,0,0,.3);
+}
+.zn-info{flex:1;min-width:0}
+.zn-name{
+  font-size:12px;font-weight:600;white-space:nowrap;
+  overflow:hidden;text-overflow:ellipsis;letter-spacing:-.2px;
+}
+.zn-desc{font-size:10px;color:var(--muted);margin-top:1px;font-weight:400}
+.zn-bar-bg{height:2px;background:rgba(255,255,255,.06);border-radius:2px;overflow:hidden;margin-top:6px}
+.zn-bar-fill{height:100%;border-radius:2px;transition:width .7s cubic-bezier(.16,1,.3,1),background .6s}
+.zn-pct{font-size:13px;font-weight:700;flex-shrink:0;transition:color .4s}
+.coord-btn{
+  display:block;width:100%;padding:8px;border-radius:8px;cursor:pointer;
+  background:rgba(59,130,246,.08);border:1px solid rgba(59,130,246,.2);
+  color:var(--accent);font-size:11px;font-weight:600;font-family:inherit;
+  transition:all .2s;letter-spacing:.1px;
+}
+.coord-btn:hover,.coord-btn.active{background:rgba(59,130,246,.18);transform:scale(.99)}
+.coord-btn:active{transform:scale(.96)}
+.coord-hint{font-size:10px;color:var(--muted);margin-top:8px;line-height:1.7}
+
+/* ── GPS TRACKING ───────────────────────────────────────── */
+@keyframes gps-pulse{
+  0%{transform:translate(-50%,-50%) scale(1);opacity:1}
+  70%{transform:translate(-50%,-50%) scale(2.8);opacity:0}
+  100%{transform:translate(-50%,-50%) scale(1);opacity:0}
+}
+.gps-dot{
+  width:14px;height:14px;border-radius:50%;
+  background:#3b82f6;border:2.5px solid #fff;
+  box-shadow:0 0 8px rgba(59,130,246,.8);
+  position:relative;z-index:1000;
+}
+.gps-dot::after{
+  content:'';position:absolute;top:50%;left:50%;
+  width:14px;height:14px;border-radius:50%;
+  background:rgba(59,130,246,.4);
+  animation:gps-pulse 2s ease-out infinite;
+}
+.gps-dot.gps-stale{ background:#f59e0b; box-shadow:0 0 8px rgba(245,158,11,.8); }
+.gps-accuracy{
+  border-radius:50%;border:1.5px solid rgba(59,130,246,.35);
+  background:rgba(59,130,246,.08);pointer-events:none;
+}
+
+/* GPS 보정 모달 */
+#gps-modal{
+  display:none;position:fixed;inset:0;z-index:9000;
+  background:rgba(0,0,0,.6);backdrop-filter:blur(4px);
+  align-items:center;justify-content:center;
+}
+#gps-modal.open{display:flex}
+#gps-modal-box{
+  background:var(--card);border:1px solid var(--border);border-radius:16px;
+  padding:24px;width:min(460px,94vw);max-height:90vh;overflow-y:auto;
+  box-shadow:0 24px 60px rgba(0,0,0,.5);
+}
+#gps-modal-box h3{margin:0 0 6px;font-size:15px;color:var(--fg)}
+#gps-modal-box p{margin:0 0 16px;font-size:11.5px;color:var(--muted);line-height:1.7}
+.gps-step{
+  background:rgba(59,130,246,.07);border:1px solid rgba(59,130,246,.2);
+  border-radius:10px;padding:14px;margin-bottom:12px;
+}
+.gps-step-title{font-size:11px;font-weight:700;color:var(--accent);margin-bottom:8px;letter-spacing:.3px}
+.gps-coord-row{display:flex;gap:8px;margin-bottom:8px}
+.gps-coord-row input{
+  flex:1;background:rgba(255,255,255,.05);border:1px solid var(--border);
+  border-radius:7px;padding:7px 10px;color:var(--fg);font-size:12px;
+  font-family:monospace;outline:none;transition:border .2s;
+}
+.gps-coord-row input:focus{border-color:var(--accent)}
+.gps-coord-row input::placeholder{color:var(--muted)}
+.gps-pick-btn{
+  display:block;width:100%;padding:8px;border-radius:8px;cursor:pointer;
+  background:rgba(56,189,248,.1);border:1px solid rgba(56,189,248,.3);
+  color:var(--accent);font-size:11px;font-weight:600;font-family:inherit;
+  transition:all .2s;margin-bottom:6px;
+}
+.gps-pick-btn:hover{background:rgba(56,189,248,.2)}
+.gps-pick-btn.picked{background:rgba(34,197,94,.12);border-color:rgba(34,197,94,.4);color:#4ade80}
+.gps-modal-btns{display:flex;gap:8px;margin-top:16px}
+.gps-modal-btns button{
+  flex:1;padding:10px;border-radius:9px;cursor:pointer;font-size:12px;
+  font-weight:600;font-family:inherit;transition:all .2s;border:1px solid var(--border);
+  background:rgba(255,255,255,.04);color:var(--muted);
+}
+.gps-modal-btns button.primary{
+  background:var(--accent);border-color:var(--accent);color:#fff;
+}
+.gps-modal-btns button.primary:hover{opacity:.88}
+.gps-status-badge{
+  display:inline-flex;align-items:center;gap:5px;
+  font-size:10px;padding:3px 8px;border-radius:20px;font-weight:600;
+  border:1px solid;margin-top:6px;
+}
+.gps-status-badge.on{color:#4ade80;border-color:rgba(74,222,128,.3);background:rgba(74,222,128,.08)}
+.gps-status-badge.off{color:var(--muted);border-color:var(--border);background:transparent}
+.gps-status-badge.err{color:#f87171;border-color:rgba(248,113,113,.3);background:rgba(248,113,113,.08)}
+
+/* ── OPACITY SLIDER ─────────────────────────────────────── */
+#map-opacity-slider{
+  width:100%;accent-color:var(--accent);cursor:pointer;margin-top:6px;
+  height:3px;border-radius:2px;
+}
+
+/* ── RIGHT PANEL ─────────────────────────────────────────── */
+#panel{
+  position:fixed;top:54px;right:0;width:350px;bottom:0;
+  background:rgba(9,14,26,.88);border-left:1px solid var(--border);
+  z-index:500;display:flex;flex-direction:column;
+  backdrop-filter:blur(24px) saturate(160%);
+  -webkit-backdrop-filter:blur(24px) saturate(160%);
+  transform:translateX(100%);
+  transition:transform .4s cubic-bezier(.16,1,.3,1);
+  box-shadow:-20px 0 60px rgba(0,0,0,.4);
+}
+#panel.open{transform:translateX(0)}
+
+/* Panel header */
+#pn-head{padding:16px 16px 0;border-bottom:1px solid var(--border);flex-shrink:0}
+.pn-title-row{display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:12px}
+#pn-zone{font-size:16px;font-weight:800;line-height:1.2;letter-spacing:-.4px}
+#pn-comp{font-size:11px;color:var(--muted);margin-top:4px;font-weight:500}
+#pn-close{
+  width:28px;height:28px;border-radius:8px;background:rgba(255,255,255,.04);
+  border:1px solid var(--border);cursor:pointer;display:flex;align-items:center;
+  justify-content:center;color:var(--muted);font-size:13px;
+  transition:all .2s;flex-shrink:0;
+}
+#pn-close:hover{background:rgba(239,68,68,.12);color:var(--red);border-color:rgba(239,68,68,.3)}
+#pn-close:active{transform:scale(.9)}
+
+/* Tabs */
+#pn-tabs{display:flex;gap:0;overflow:hidden}
+.pn-tab{
+  flex:1;padding:9px 0;font-size:10px;font-weight:600;
+  color:var(--muted);cursor:pointer;text-align:center;
+  border-bottom:2px solid transparent;transition:all .2s;
+  user-select:none;white-space:nowrap;letter-spacing:.3px;
+  text-transform:uppercase;
+}
+.pn-tab:hover{color:var(--text);background:rgba(255,255,255,.02)}
+.pn-tab.active{color:var(--accent);border-bottom-color:var(--accent)}
+
+/* Panel body */
+#pn-body{flex:1;overflow-y:auto;padding:16px}
+#pn-body::-webkit-scrollbar{width:2px}
+#pn-body::-webkit-scrollbar-thumb{background:var(--border2);border-radius:1px}
+
+/* Section label */
+.sec-lbl{
+  font-size:9px;font-weight:700;color:var(--muted);
+  letter-spacing:1.5px;text-transform:uppercase;
+  display:flex;align-items:center;gap:8px;margin-bottom:12px;
+}
+.sec-lbl::after{content:'';flex:1;height:1px;background:var(--border)}
+
+/* ── BENTO CARD SYSTEM ───────────────────────────────────── */
+.bento-card{
+  border-radius:16px;border:1px solid var(--border);
+  background:var(--glass-card);
+  backdrop-filter:blur(12px);
+  box-shadow:0 4px 24px rgba(0,0,0,.25),inset 0 1px 0 rgba(255,255,255,.04);
+  transition:border-color .2s,box-shadow .2s;
+  overflow:hidden;
+}
+.bento-card:hover{
+  border-color:var(--border2);
+  box-shadow:0 8px 32px rgba(0,0,0,.35),inset 0 1px 0 rgba(255,255,255,.06);
+}
+
+/* Overall progress ring card */
+.ov-card{
+  display:flex;align-items:center;gap:16px;padding:16px;
+  border-radius:16px;
+  background:linear-gradient(135deg,rgba(59,130,246,.08),rgba(59,130,246,.02));
+  border:1px solid rgba(59,130,246,.15);
+  margin-bottom:6px;
+  box-shadow:0 4px 24px rgba(0,0,0,.2),0 0 0 1px rgba(59,130,246,.05);
+  position:relative;overflow:hidden;
+}
+.ov-card::before{
+  content:'';position:absolute;top:-40px;right:-20px;
+  width:120px;height:120px;border-radius:50%;
+  background:radial-gradient(circle,rgba(59,130,246,.08),transparent 70%);
+  pointer-events:none;
+}
+.ring-box{width:68px;height:68px;position:relative;flex-shrink:0}
+.ring-box svg{transform:rotate(-90deg)}
+.ring-num{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-size:13px;font-weight:800}
+.ov-info{flex:1}
+.ov-pct{font-size:24px;font-weight:800;transition:color .4s;letter-spacing:-1px}
+.ov-sub{font-size:11px;color:var(--muted);margin-top:4px;line-height:1.7;font-weight:400}
+
+/* ── TASK SLIDERS ─────────────────────────────────────────── */
+.task-c{
+  padding:12px 14px;border-radius:12px;
+  background:rgba(30,41,59,.4);border:1px solid var(--border);
+  margin-bottom:7px;transition:all .2s;
+  backdrop-filter:blur(8px);
+}
+.task-c:hover{border-color:rgba(59,130,246,.2);background:rgba(59,130,246,.04)}
+.task-c.sim-mod{border-color:rgba(249,115,22,.4)!important;background:rgba(249,115,22,.05)!important}
+.task-h{display:flex;align-items:center;justify-content:space-between;margin-bottom:9px}
+.task-n{font-size:12px;font-weight:600;letter-spacing:-.2px}
+.task-s{font-size:10px;padding:3px 9px;border-radius:10px;font-weight:600;letter-spacing:.2px}
+.s-done{background:rgba(16,185,129,.1);color:var(--green);border:1px solid rgba(16,185,129,.2)}
+.s-ing {background:rgba(245,158,11,.1);color:var(--yellow);border:1px solid rgba(245,158,11,.2)}
+.s-wait{background:rgba(255,255,255,.05);color:var(--muted);border:1px solid var(--border)}
+.slider-row{display:flex;align-items:center;gap:9px}
+.sim-slider{
+  flex:1;-webkit-appearance:none;appearance:none;
+  height:3px;border-radius:2px;outline:none;cursor:pointer;
+  background:linear-gradient(to right,var(--accent) 0%,var(--accent) var(--v,0%),rgba(255,255,255,.08) var(--v,0%));
+  transition:background .1s;
+}
+.sim-slider::-webkit-slider-thumb{
+  -webkit-appearance:none;width:14px;height:14px;border-radius:50%;
+  background:var(--accent);border:2px solid var(--bg);
+  box-shadow:0 0 0 3px rgba(59,130,246,.2),0 2px 6px rgba(59,130,246,.4);
+  cursor:pointer;transition:transform .15s,box-shadow .15s;
+}
+.sim-slider::-webkit-slider-thumb:hover{transform:scale(1.3);box-shadow:0 0 0 5px rgba(59,130,246,.25)}
+.sim-slider::-moz-range-thumb{
+  width:14px;height:14px;border-radius:50%;
+  background:var(--accent);border:2px solid var(--bg);cursor:pointer;
+}
+.pct-input{
+  width:44px;padding:3px 5px;border-radius:6px;
+  background:rgba(255,255,255,.05);border:1px solid var(--border);
+  color:var(--text);font-size:11px;font-weight:600;text-align:center;
+  outline:none;transition:all .18s;font-family:inherit;
+}
+.pct-input:focus{border-color:var(--accent);background:rgba(59,130,246,.08)}
+.sim-label{font-size:9px;color:var(--sim);margin-top:5px;display:none;font-weight:500}
+.sim-label.show{display:block}
+
+/* ── WORKER TABLE ────────────────────────────────────────── */
+.wk-wrap{
+  border-radius:12px;overflow:hidden;border:1px solid var(--border);
+  background:rgba(30,41,59,.3);
+  box-shadow:0 2px 12px rgba(0,0,0,.15);
+}
+.wk-head{
+  display:grid;grid-template-columns:1fr 72px 72px 44px;
+  padding:8px 12px;border-bottom:1px solid var(--border);
+  background:rgba(255,255,255,.02);
+}
+.wk-head span{font-size:9px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.8px}
+.wk-head span:not(:first-child){text-align:right}
+.wk-row{
+  display:grid;grid-template-columns:1fr 72px 72px 44px;
+  padding:9px 12px;border-bottom:1px solid rgba(148,163,184,.05);
+  align-items:center;transition:background .15s;
+}
+.wk-row:last-child{border-bottom:none}
+.wk-row:hover{background:rgba(59,130,246,.04)}
+.wk-role{display:flex;align-items:center;gap:7px;font-size:11px;font-weight:500}
+.role-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
+.wk-num-input{
+  width:52px;padding:4px 6px;border-radius:6px;
+  background:rgba(255,255,255,.05);border:1px solid var(--border);
+  color:var(--text);font-size:12px;font-weight:600;text-align:center;
+  outline:none;transition:all .18s;display:block;margin-left:auto;
+  font-family:inherit;
+}
+.wk-num-input:focus{border-color:var(--accent);background:rgba(59,130,246,.08)}
+.wk-pct{font-size:11px;color:var(--muted);text-align:right}
+.wk-total-row{
+  display:grid;grid-template-columns:1fr 72px 72px 44px;
+  padding:9px 12px;background:rgba(59,130,246,.06);
+  border-top:1px solid var(--border);
+}
+.wk-total-row span{font-size:12px;font-weight:700;color:var(--accent)}
+.wk-total-row span:not(:first-child){text-align:right}
+
+/* ── EQUIPMENT ───────────────────────────────────────────── */
+.eq-row{
+  display:flex;align-items:center;gap:9px;padding:10px 13px;
+  border-radius:11px;background:rgba(30,41,59,.35);
+  border:1px solid var(--border);margin-bottom:6px;
+  transition:all .2s;
+}
+.eq-row:hover{border-color:rgba(59,130,246,.2);transform:translateX(2px)}
+.eq-icon{
+  width:30px;height:30px;border-radius:8px;
+  display:flex;align-items:center;justify-content:center;
+  font-size:15px;flex-shrink:0;
+  background:rgba(255,255,255,.05);border:1px solid var(--border);
+}
+.eq-info{flex:1;min-width:0}
+.eq-name{font-size:12px;font-weight:500;letter-spacing:-.1px}
+.eq-type{font-size:10px;color:var(--muted)}
+.eq-select{
+  padding:4px 8px;border-radius:7px;border:1px solid var(--border);
+  background:rgba(30,41,59,.6);color:var(--text);font-size:11px;
+  outline:none;cursor:pointer;transition:all .2s;font-family:inherit;
+}
+.eq-select:focus{border-color:var(--accent)}
+.eq-select option{background:#1e293b;color:var(--text)}
+.eq-status-운행중{color:var(--green)!important;border-color:rgba(16,185,129,.3)!important;background:rgba(16,185,129,.08)!important}
+.eq-status-대기{color:var(--yellow)!important;border-color:rgba(245,158,11,.3)!important;background:rgba(245,158,11,.08)!important}
+.eq-status-정비중{color:var(--red)!important;border-color:rgba(239,68,68,.3)!important;background:rgba(239,68,68,.08)!important}
+
+/* ── HAZARD ──────────────────────────────────────────────── */
+.hz-row{
+  display:flex;align-items:center;gap:9px;padding:10px 13px;
+  border-radius:11px;background:rgba(30,41,59,.35);
+  border:1px solid var(--border);margin-bottom:6px;transition:all .2s;
+}
+.hz-row.active-hz{
+  border-color:rgba(239,68,68,.3);background:rgba(239,68,68,.06);
+  box-shadow:0 0 16px rgba(239,68,68,.08);
+}
+.hz-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0;box-shadow:0 0 8px currentColor}
+.hz-info{flex:1;min-width:0}
+.hz-name{font-size:12px;font-weight:500;letter-spacing:-.1px}
+.hz-detail{font-size:10px;color:var(--muted);margin-top:1px}
+
+/* ── MEMO ────────────────────────────────────────────────── */
+.memo-meta{display:flex;align-items:center;gap:8px;margin-bottom:11px;flex-wrap:wrap}
+.memo-tag{
+  padding:3px 10px;border-radius:10px;font-size:10px;font-weight:700;border:1px solid;
+  letter-spacing:.3px;
+}
+.memo-tag.urgent{color:var(--red);border-color:rgba(239,68,68,.3);background:rgba(239,68,68,.08)}
+.memo-tag.important{color:var(--yellow);border-color:rgba(245,158,11,.3);background:rgba(245,158,11,.08)}
+.memo-tag.normal{color:var(--muted);border-color:var(--border);background:rgba(255,255,255,.02)}
+.memo-author,.memo-date{font-size:10px;color:var(--muted)}
+.memo-date{margin-left:auto}
+textarea.memo-ta{
+  width:100%;min-height:120px;padding:13px;border-radius:11px;
+  background:rgba(30,41,59,.4);border:1px solid var(--border);
+  color:var(--text);font-size:12px;line-height:1.8;resize:vertical;
+  outline:none;font-family:'Inter',inherit;transition:all .2s;
+}
+textarea.memo-ta:focus{border-color:var(--accent);background:rgba(59,130,246,.04);box-shadow:0 0 0 3px rgba(59,130,246,.1)}
+.priority-sel{
+  padding:6px 11px;border-radius:8px;border:1px solid var(--border);
+  background:rgba(30,41,59,.5);color:var(--text);font-size:11px;
+  outline:none;cursor:pointer;width:100%;margin-top:9px;font-family:inherit;
+}
+.priority-sel option{background:#1e293b}
+
+/* ── COORD BAR ───────────────────────────────────────────── */
+#coord-bar{
+  position:fixed;bottom:18px;left:50%;transform:translateX(-50%);
+  display:none;align-items:center;gap:10px;padding:9px 16px;
+  border-radius:12px;background:rgba(9,14,26,.97);
+  border:1px solid var(--border2);z-index:600;white-space:nowrap;
+  box-shadow:0 8px 40px rgba(0,0,0,.6),0 0 0 1px rgba(59,130,246,.08);
+  backdrop-filter:blur(20px);
+}
+.cb-label{font-size:11px;color:var(--muted)}
+#coord-val{font-family:'Consolas',monospace;font-size:12px;color:var(--accent);min-width:200px}
+.cb-btn{
+  padding:4px 12px;border-radius:7px;background:rgba(59,130,246,.1);
+  border:1px solid rgba(59,130,246,.25);color:var(--accent);
+  font-size:11px;cursor:pointer;transition:all .2s;font-family:inherit;font-weight:600;
+}
+.cb-btn:hover{background:rgba(59,130,246,.2)}
+.cb-btn:active{transform:scale(.95)}
+.cb-btn.copied{border-color:var(--green)!important;color:var(--green)!important}
+
+/* ── MAP HINT ────────────────────────────────────────────── */
+#map-hint{
+  position:fixed;bottom:18px;right:18px;
+  background:rgba(9,14,26,.85);border:1px solid var(--border);
+  border-radius:10px;padding:9px 13px;font-size:10.5px;color:var(--muted);
+  z-index:500;line-height:2;pointer-events:none;backdrop-filter:blur(12px);
+}
+
+/* ── TOAST ───────────────────────────────────────────────── */
+#toast{
+  position:fixed;top:66px;left:50%;
+  transform:translateX(-50%) translateY(-8px) scale(.96);
+  background:rgba(9,14,26,.97);border:1px solid rgba(59,130,246,.35);
+  border-radius:10px;padding:8px 18px;font-size:12px;color:var(--accent);
+  z-index:800;opacity:0;pointer-events:none;white-space:nowrap;
+  transition:all .28s cubic-bezier(.16,1,.3,1);
+  box-shadow:0 8px 32px rgba(0,0,0,.5),0 0 0 1px rgba(59,130,246,.1);
+  font-weight:500;letter-spacing:-.1px;
+}
+#toast.show{opacity:1;transform:translateX(-50%) translateY(0) scale(1)}
+#toast.warn{
+  border-color:rgba(249,115,22,.35)!important;
+  color:var(--sim)!important;
+  box-shadow:0 8px 32px rgba(0,0,0,.5),0 0 0 1px rgba(249,115,22,.1)!important;
+}
+
+/* ── LOADING ─────────────────────────────────────────────── */
+#loading{
+  position:fixed;inset:0;background:var(--bg);z-index:9999;
+  display:flex;flex-direction:column;align-items:center;
+  justify-content:center;gap:18px;transition:opacity .5s ease;
+}
+#loading.fade{opacity:0;pointer-events:none}
+.spin{
+  width:40px;height:40px;border-radius:50%;
+  border:2px solid var(--border);border-top-color:var(--accent);
+  animation:spin .7s linear infinite;
+  box-shadow:0 0 20px rgba(59,130,246,.2);
+}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* Markers */
+.mk{
+  display:flex;align-items:center;justify-content:center;border-radius:50%;border:2px solid;
+  transition:transform .2s,box-shadow .2s;cursor:pointer;
+}
+.mk:hover{transform:scale(1.3)!important;box-shadow:0 4px 16px rgba(0,0,0,.4)!important}
+.zone-lbl{font-weight:900;letter-spacing:2px;pointer-events:none;white-space:nowrap}
+.leaflet-interactive.hazard-path{animation:hz-pulse 2s ease infinite}
+@keyframes hz-pulse{0%,100%{opacity:.85}50%{opacity:.3}}
+
+/* ── EQUIPMENT TOOLBAR ───────────────────────────────────── */
+#eq-toolbar{
+  position:fixed;bottom:22px;left:260px;z-index:600;
+  background:rgba(9,14,26,.92);border:1px solid var(--border2);border-radius:14px;
+  padding:12px 13px;backdrop-filter:blur(20px) saturate(160%);
+  box-shadow:0 8px 40px rgba(0,0,0,.6),0 0 0 1px rgba(59,130,246,.05);
+  min-width:236px;transition:left .32s cubic-bezier(.16,1,.3,1);
+}
+#eq-toolbar.sb-closed{left:16px}
+.eq-tb-hd{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
+.eq-tb-title{font-size:9px;font-weight:700;color:var(--muted);letter-spacing:1.5px;text-transform:uppercase}
+.eq-tb-toggle{
+  font-size:10px;color:var(--muted);cursor:pointer;padding:2px 8px;
+  border-radius:5px;border:1px solid var(--border);
+  transition:all .18s;font-family:inherit;background:transparent;
+}
+.eq-tb-toggle:hover{color:var(--text);border-color:var(--accent)}
+.eq-tb-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:5px}
+.eq-tb-item{
+  border-radius:10px;background:rgba(255,255,255,.03);border:1px solid var(--border);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  cursor:pointer;transition:all .2s cubic-bezier(.16,1,.3,1);padding:7px 4px;
+}
+.eq-tb-item:hover{
+  background:rgba(59,130,246,.1);border-color:rgba(59,130,246,.35);
+  transform:scale(1.08);box-shadow:0 4px 12px rgba(59,130,246,.2);
+}
+.eq-tb-item:active{transform:scale(.95)}
+.eq-tb-item.selected{
+  background:rgba(251,146,60,.15);border-color:rgba(251,146,60,.5);
+  box-shadow:0 0 14px rgba(251,146,60,.25);
+}
+.eq-tb-emoji{font-size:18px;line-height:1}
+.eq-tb-lbl{font-size:7px;color:var(--muted);margin-top:2px;text-align:center;line-height:1.2;font-weight:500}
+.eq-tb-hint{
+  font-size:9px;color:var(--muted);text-align:center;
+  margin-top:8px;padding-top:8px;border-top:1px solid var(--border);letter-spacing:.3px;
+}
+.eq-tb-hint.active{color:var(--orange)}
+
+/* ── LEGEND MARKERS ──────────────────────────────────────── */
+.leg-wrap{
+  position:relative;width:34px;height:34px;border-radius:9px;
+  background:rgba(9,14,26,.95);border:2px solid;
+  display:flex;align-items:center;justify-content:center;
+  font-size:15px;cursor:grab;user-select:none;
+  box-shadow:0 4px 16px rgba(0,0,0,.5),0 0 0 1px rgba(255,255,255,.05);
+  transition:transform .2s,box-shadow .2s;
+}
+.leg-wrap:hover{transform:scale(1.1);box-shadow:0 6px 20px rgba(0,0,0,.6)}
+.leg-wrap:hover .eq-del{opacity:1}
+.add-mk-btn{
+  width:22px;height:22px;border-radius:6px;border:1px solid var(--border);
+  background:rgba(255,255,255,.03);cursor:pointer;display:flex;align-items:center;
+  justify-content:center;font-size:13px;font-weight:700;flex-shrink:0;
+  color:var(--muted);transition:all .2s;line-height:1;
+}
+.add-mk-btn:hover{background:rgba(59,130,246,.12);border-color:var(--accent);color:var(--accent)}
+.add-mk-btn.active{
+  background:rgba(59,130,246,.2);border-color:var(--accent);color:var(--accent);
+  animation:pulse 1.2s ease infinite;
+}
+
+/* ── EQUIPMENT MARKER DELETE ─────────────────────────────── */
+.eq-del{
+  position:absolute;top:-8px;right:-8px;width:17px;height:17px;border-radius:50%;
+  background:#ef4444;border:2px solid var(--bg);
+  display:flex;align-items:center;justify-content:center;
+  font-size:10px;font-weight:700;color:#fff;cursor:pointer;
+  box-shadow:0 2px 10px rgba(0,0,0,.7);opacity:0;transition:opacity .2s;
+  pointer-events:auto;z-index:99;line-height:1;
+}
+.eq-wrap:hover .eq-del{opacity:1}
+.eq-wrap{
+  position:relative;width:42px;height:42px;border-radius:11px;
+  background:rgba(9,14,26,.95);border:2px solid rgba(251,146,60,.6);
+  display:flex;align-items:center;justify-content:center;font-size:18px;
+  box-shadow:0 0 18px rgba(251,146,60,.35),0 4px 12px rgba(0,0,0,.6);
+  cursor:grab;user-select:none;
+  transition:transform .2s,box-shadow .2s;
+}
+.eq-wrap:hover{transform:scale(1.08);box-shadow:0 0 24px rgba(251,146,60,.5)}
+
+/* ── COLLAB STATUS ───────────────────────────────────────── */
+#collab-bar{
+  position:fixed;top:62px;right:16px;z-index:600;
+  display:flex;align-items:center;gap:7px;padding:5px 13px;
+  background:rgba(9,14,26,.92);border:1px solid var(--border);
+  border-radius:20px;font-size:10.5px;color:var(--muted);
+  backdrop-filter:blur(16px);transition:all .3s;
+  box-shadow:0 4px 20px rgba(0,0,0,.4);
+}
+#collab-bar.connected{border-color:rgba(16,185,129,.3);color:var(--green)}
+#collab-bar.connecting{border-color:rgba(245,158,11,.3);color:var(--yellow);animation:pulse 2s ease infinite}
+.cb-dot{width:6px;height:6px;border-radius:50%;background:currentColor;flex-shrink:0}
+#collab-bar.connected .cb-dot{animation:pulse 2s ease infinite;box-shadow:0 0 6px currentColor}
+
+/* Firebase hint */
+#fb-setup-hint{
+  position:fixed;top:92px;right:16px;z-index:599;max-width:260px;
+  background:rgba(9,14,26,.97);border:1px solid rgba(59,130,246,.25);
+  border-radius:12px;padding:13px 15px;font-size:11px;color:var(--text);
+  line-height:1.75;display:none;backdrop-filter:blur(20px);
+  box-shadow:0 8px 40px rgba(0,0,0,.5);
+}
+#fb-setup-hint.show{display:block}
+#fb-setup-hint code{color:var(--accent);font-size:10px}
+
+/* ── MICRO INTERACTIONS ──────────────────────────────────── */
+button,
+.cb-btn,
+.coord-btn,
+.eq-tb-toggle,
+.draw-btn,
+.add-mk-btn,
+.pn-tab,
+.zone-toggle-btn{
+  transition:all .18s cubic-bezier(.16,1,.3,1);
+}
+
+/* Generic action buttons in panel */
+button[onclick]:not(.pn-tab):not(#pn-close):not(#sb-btn):not(.sw):not(.draw-btn):not(.add-mk-btn){
+  cursor:pointer;
+}
+
+/* Glow effect for accent buttons */
+.glow-btn{
+  transition:all .22s;
+}
+.glow-btn:hover{
+  box-shadow:0 0 20px var(--accent-glow);
+}
+
+/* Sync flash animation */
+@keyframes sync-flash{
+  0%{box-shadow:0 0 0 0 rgba(59,130,246,.5)}
+  70%{box-shadow:0 0 0 8px rgba(59,130,246,0)}
+  100%{box-shadow:0 0 0 0 rgba(59,130,246,0)}
+}
+.sync-flash{animation:sync-flash .6s ease}
+
+/* Zone card selected state */
+.zn-card.selected{
+  border-color:rgba(59,130,246,.4)!important;
+  background:rgba(59,130,246,.1)!important;
+  box-shadow:0 0 0 1px rgba(59,130,246,.2),0 4px 20px rgba(59,130,246,.15)!important;
+}
+
+/* ── ENTRY MODAL ─────────────────────────────────────────── */
+#entry-modal{
+  position:fixed;inset:0;z-index:10000;
+  display:flex;align-items:center;justify-content:center;
+  background:rgba(9,14,26,.97);
+  backdrop-filter:blur(24px);
+  -webkit-backdrop-filter:blur(24px);
+  animation:entryFadeIn .4s ease;
+}
+@keyframes entryFadeIn{from{opacity:0}to{opacity:1}}
+#entry-modal.hide{
+  animation:entryFadeOut .35s ease forwards;
+  pointer-events:none;
+}
+@keyframes entryFadeOut{from{opacity:1}to{opacity:0;transform:scale(.98)}}
+.entry-card{
+  width:360px;padding:36px 32px;border-radius:20px;
+  background:rgba(30,41,59,.8);border:1px solid rgba(148,163,184,.12);
+  box-shadow:0 32px 80px rgba(0,0,0,.7),0 0 0 1px rgba(59,130,246,.08);
+  backdrop-filter:blur(20px);
+  animation:entryCardIn .5s cubic-bezier(.16,1,.3,1) .1s both;
+}
+@keyframes entryCardIn{
+  from{opacity:0;transform:translateY(20px) scale(.97)}
+  to{opacity:1;transform:translateY(0) scale(1)}
+}
+.entry-logo{
+  width:52px;height:52px;border-radius:14px;margin:0 auto 20px;
+  background:linear-gradient(135deg,rgba(59,130,246,.3),rgba(59,130,246,.08));
+  border:1px solid rgba(59,130,246,.3);
+  display:flex;align-items:center;justify-content:center;
+  font-size:24px;box-shadow:0 0 30px rgba(59,130,246,.2);
+}
+.entry-title{
+  font-size:18px;font-weight:800;text-align:center;
+  letter-spacing:-.5px;margin-bottom:6px;
+}
+.entry-sub{
+  font-size:12px;color:var(--muted);text-align:center;
+  margin-bottom:28px;line-height:1.6;
+}
+.entry-label{
+  font-size:10px;font-weight:700;color:var(--muted);
+  letter-spacing:1.2px;text-transform:uppercase;
+  margin-bottom:7px;margin-top:16px;display:block;
+}
+.entry-input{
+  width:100%;padding:11px 14px;border-radius:10px;
+  background:rgba(255,255,255,.05);border:1px solid var(--border2);
+  color:var(--text);font-size:14px;font-family:inherit;
+  outline:none;transition:all .2s;box-sizing:border-box;
+}
+.entry-input:focus{
+  border-color:var(--accent);background:rgba(59,130,246,.07);
+  box-shadow:0 0 0 3px rgba(59,130,246,.12);
+}
+.entry-input::placeholder{color:var(--muted);font-size:13px}
+.entry-btn{
+  width:100%;margin-top:24px;padding:13px;border-radius:11px;
+  background:linear-gradient(135deg,#3b82f6,#2563eb);
+  border:none;color:#fff;font-size:14px;font-weight:700;
+  font-family:inherit;cursor:pointer;letter-spacing:-.2px;
+  transition:all .22s cubic-bezier(.16,1,.3,1);
+  box-shadow:0 4px 20px rgba(59,130,246,.35);
+}
+.entry-btn:hover{
+  transform:translateY(-1px);
+  box-shadow:0 8px 28px rgba(59,130,246,.5);
+}
+.entry-btn:active{transform:scale(.97)}
+.entry-error{
+  font-size:11px;color:var(--red);margin-top:8px;
+  display:none;text-align:center;
+}
+.entry-error.show{display:block}
+
+/* 탑바 유저 뱃지 */
+#user-badge{
+  display:flex;align-items:center;gap:8px;padding:4px 12px 4px 6px;
+  border-radius:20px;border:1px solid var(--border);
+  background:rgba(255,255,255,.04);cursor:pointer;
+  transition:all .2s;
+}
+#user-badge:hover{background:rgba(59,130,246,.1);border-color:rgba(59,130,246,.25)}
+.ub-avatar{
+  width:24px;height:24px;border-radius:50%;
+  background:linear-gradient(135deg,#3b82f6,#8b5cf6);
+  display:flex;align-items:center;justify-content:center;
+  font-size:11px;font-weight:700;color:#fff;flex-shrink:0;
+}
+.ub-info{display:flex;flex-direction:column;line-height:1.2}
+.ub-name{font-size:11px;font-weight:600;color:var(--text)}
+.ub-company{font-size:9.5px;color:var(--muted)}
+
+[data-theme="light"] .entry-card{background:rgba(255,255,255,.9)}
+[data-theme="light"] .entry-input{background:rgba(0,0,0,.04)}
+
+/* Smooth panel slide */
+@keyframes panelSlideIn{
+  from{opacity:0;transform:translateX(20px)}
+  to{opacity:1;transform:translateX(0)}
+}
+#pn-body > *{animation:panelSlideIn .3s cubic-bezier(.16,1,.3,1) both}
+
+/* ── LIGHT MODE ──────────────────────────────────────────── */
+[data-theme="light"]{
+  --bg:         #f1f5f9;
+  --bg2:        #e2e8f0;
+  --card:       rgba(255,255,255,0.85);
+  --card-solid: #ffffff;
+  --border:     rgba(15,23,42,0.1);
+  --border2:    rgba(15,23,42,0.18);
+  --accent:     #2563eb;
+  --accent2:    #1d4ed8;
+  --accent-glow:rgba(37,99,235,0.25);
+  --text:       #0f172a;
+  --muted:      #64748b;
+  --green:      #059669;
+  --yellow:     #d97706;
+  --red:        #dc2626;
+  --orange:     #ea580c;
+  --purple:     #7c3aed;
+  --sim:        #ea580c;
+  --glass:      rgba(241,245,249,0.85);
+  --glass-card: rgba(255,255,255,0.75);
+}
+[data-theme="light"] body{background:var(--bg)}
+[data-theme="light"] #map{background:#dde7f0!important}
+[data-theme="light"] .leaflet-container{background:#dde7f0!important}
+[data-theme="light"] #topbar{background:rgba(241,245,249,.92);border-color:var(--border)}
+[data-theme="light"] #sidebar{background:rgba(241,245,249,.9);border-color:var(--border)}
+[data-theme="light"] #panel{background:rgba(248,250,252,.95);border-color:var(--border)}
+[data-theme="light"] #eq-toolbar{background:rgba(255,255,255,.95);border-color:var(--border)}
+[data-theme="light"] #collab-bar{background:rgba(255,255,255,.95);border-color:var(--border)}
+[data-theme="light"] #draw-hint{background:rgba(255,255,255,.97);border-color:var(--border2)}
+[data-theme="light"] #coord-bar{background:rgba(255,255,255,.97);border-color:var(--border2)}
+[data-theme="light"] #map-hint{background:rgba(255,255,255,.88);border-color:var(--border)}
+[data-theme="light"] #toast{background:rgba(255,255,255,.98);border-color:rgba(37,99,235,.3)}
+[data-theme="light"] .zn-card{background:rgba(255,255,255,.6);border-color:var(--border)}
+[data-theme="light"] .zn-card:hover{background:rgba(37,99,235,.06);border-color:rgba(37,99,235,.25)}
+[data-theme="light"] .task-c{background:rgba(255,255,255,.5);border-color:var(--border)}
+[data-theme="light"] .task-c:hover{background:rgba(37,99,235,.04)}
+[data-theme="light"] .wk-wrap{background:rgba(255,255,255,.5)}
+[data-theme="light"] .wk-row:hover{background:rgba(37,99,235,.04)}
+[data-theme="light"] .eq-row{background:rgba(255,255,255,.5)}
+[data-theme="light"] .hz-row{background:rgba(255,255,255,.5)}
+[data-theme="light"] .lg-row:hover{background:rgba(37,99,235,.05)}
+[data-theme="light"] .lg-row.on{background:rgba(37,99,235,.07)}
+[data-theme="light"] .leaflet-control-zoom a{background:rgba(255,255,255,.95)!important;color:#0f172a!important}
+[data-theme="light"] .ov-card{background:linear-gradient(135deg,rgba(37,99,235,.07),rgba(37,99,235,.02))}
+[data-theme="light"] .pct-input,.wk-num-input{background:rgba(0,0,0,.04);color:#0f172a}
+[data-theme="light"] textarea.memo-ta{background:rgba(0,0,0,.03)}
+[data-theme="light"] .eq-select{background:rgba(0,0,0,.04);color:#0f172a}
+[data-theme="light"] .priority-sel{background:rgba(0,0,0,.04);color:#0f172a}
+[data-theme="light"] .sb-scroll::-webkit-scrollbar-thumb{background:rgba(0,0,0,.15)}
+[data-theme="light"] .eq-wrap{background:rgba(255,255,255,.95)}
+[data-theme="light"] .leg-wrap{background:rgba(255,255,255,.95)}
+
+/* ── THEME TOGGLE BUTTON ─────────────────────────────────── */
+#theme-toggle{
+  width:34px;height:34px;border-radius:9px;
+  background:rgba(255,255,255,.05);border:1px solid var(--border);
+  cursor:pointer;display:flex;align-items:center;justify-content:center;
+  transition:all .22s cubic-bezier(.16,1,.3,1);
+  color:var(--muted);flex-shrink:0;
+}
+#theme-toggle:hover{
+  background:rgba(59,130,246,.12);border-color:rgba(59,130,246,.3);
+  color:var(--accent);transform:scale(1.05);
+}
+#theme-toggle:active{transform:scale(.92)}
+[data-theme="light"] #theme-toggle{background:rgba(0,0,0,.04)}
+[data-theme="light"] #theme-toggle:hover{background:rgba(37,99,235,.1)}
+
+/* ── LUCIDE ICON HELPER ──────────────────────────────────── */
+.lc{display:inline-flex;align-items:center;justify-content:center;
+    vertical-align:middle;flex-shrink:0}
+.lc svg{stroke:currentColor;fill:none;stroke-width:1.75;
+         stroke-linecap:round;stroke-linejoin:round}
+
+/* ── CHART.JS RING REPLACEMENT ───────────────────────────── */
+.ov-card{
+  display:flex;align-items:center;gap:16px;padding:16px;
+  border-radius:16px;
+  background:linear-gradient(135deg,rgba(59,130,246,.08),rgba(59,130,246,.02));
+  border:1px solid rgba(59,130,246,.15);margin-bottom:6px;
+  box-shadow:0 4px 24px rgba(0,0,0,.2),0 0 0 1px rgba(59,130,246,.05);
+  position:relative;overflow:hidden;
+}
+.ov-canvas-wrap{width:72px;height:72px;position:relative;flex-shrink:0}
+.ov-canvas-pct{
+  position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+  font-size:13px;font-weight:800;pointer-events:none;
+}
+
+/* ── PANEL TAB ICONS ─────────────────────────────────────── */
+.pn-tab{
+  flex:1;padding:9px 0;font-size:9.5px;font-weight:600;
+  color:var(--muted);cursor:pointer;text-align:center;
+  border-bottom:2px solid transparent;transition:all .2s;
+  user-select:none;white-space:nowrap;letter-spacing:.2px;
+  display:flex;flex-direction:column;align-items:center;gap:3px;
+}
+.pn-tab .ti{font-size:14px;opacity:.7;transition:opacity .2s}
+.pn-tab.active .ti{opacity:1}
+.pn-tab .tl{font-size:8.5px;text-transform:uppercase;letter-spacing:.5px}
+
+/* ── SIDEBAR ICON LABELS ─────────────────────────────────── */
+.sb-head-icon{
+  display:flex;align-items:center;gap:6px;
+  font-size:9px;font-weight:700;color:var(--muted);
+  letter-spacing:1.5px;text-transform:uppercase;margin-bottom:10px;
+}
+.sb-head-icon svg{opacity:.6;flex-shrink:0}
+
+/* ═══════════════════════════════════════════════════════════
+   MOBILE VIEWER — 768px 이하
+═══════════════════════════════════════════════════════════ */
+
+/* 모바일 감지용 클래스 (JS로 body에 추가) */
+body.is-mobile #sb-btn { display:none !important; }
+body.is-mobile #eq-toolbar { display:none !important; }
+body.is-mobile #draw-hint { display:none !important; }
+body.is-mobile #map-hint  { display:none !important; }
+body.is-mobile #fb-setup-hint { display:none !important; }
+body.is-mobile #collab-bar { display:none !important; }
+body.is-mobile .coord-box  { display:none !important; }
+
+/* 편집 전용 요소 숨기기 */
+body.is-mobile .mobile-edit-hide { display:none !important; }
+
+/* ── TOPBAR 모바일 ── */
+@media(max-width:768px){
+  #topbar{
+    height:50px;padding:0 14px;gap:8px;
+  }
+  .tb-sub,.tb-div,#clock,#sim-badge,.tb-pill{display:none!important}
+  .tb-logo{font-size:12px}
+  .tb-icon{width:28px;height:28px;font-size:13px}
+  #presence-wrap{display:none!important}
+}
+
+/* ── SIDEBAR → 하단 드로어 ── */
+@media(max-width:768px){
+  #sidebar{
+    top:auto !important;
+    left:0 !important; right:0 !important;
+    bottom:56px !important;
+    width:100% !important;
+    height:62vh;
+    max-height:62vh;
+    border-right:none !important;
+    border-top:1px solid var(--border);
+    border-radius:20px 20px 0 0;
+    transform:translateY(100%);
+    transition:transform .38s cubic-bezier(.16,1,.3,1);
+    z-index:600;
+    overflow:hidden;
+  }
+  #sidebar.mobile-open{transform:translateY(0) !important}
+
+  /* 드로어 핸들 */
+  #sidebar::before{
+    content:'';display:block;
+    width:36px;height:4px;border-radius:2px;
+    background:var(--border2);
+    margin:10px auto 4px;flex-shrink:0;
+  }
+}
+
+/* ── PANEL → 하단 시트 ── */
+@media(max-width:768px){
+  #panel{
+    top:auto !important;
+    left:0 !important; right:0 !important;
+    bottom:56px !important;
+    width:100% !important;
+    height:72vh;
+    max-height:72vh;
+    border-left:none !important;
+    border-top:1px solid var(--border);
+    border-radius:20px 20px 0 0;
+    transform:translateY(100%);
+    transition:transform .38s cubic-bezier(.16,1,.3,1);
+    z-index:610;
+  }
+  #panel.open{transform:translateY(0) !important}
+
+  /* 패널 핸들 */
+  #panel::before{
+    content:'';display:block;
+    width:36px;height:4px;border-radius:2px;
+    background:var(--border2);
+    margin:10px auto 4px;flex-shrink:0;
+    position:absolute;top:0;left:50%;transform:translateX(-50%);
+  }
+  #pn-head{padding-top:22px}
+  #pn-body{padding-bottom:80px}
+}
+
+/* ── 모바일 하단 네비바 ── */
+#mobile-nav{
+  display:none;
+  position:fixed;bottom:0;left:0;right:0;height:56px;
+  background:rgba(9,14,26,.95);
+  border-top:1px solid var(--border);
+  backdrop-filter:blur(24px) saturate(160%);
+  -webkit-backdrop-filter:blur(24px) saturate(160%);
+  z-index:800;
+  flex-direction:row;align-items:stretch;
+  box-shadow:0 -8px 32px rgba(0,0,0,.4);
+}
+#mobile-nav .mnav-btn{
+  flex:1;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;gap:3px;
+  border:none;background:transparent;
+  color:var(--muted);font-size:9.5px;font-weight:600;
+  letter-spacing:.3px;cursor:pointer;
+  transition:color .18s;padding:0;
+  font-family:inherit;
+  -webkit-tap-highlight-color:transparent;
+}
+#mobile-nav .mnav-btn svg{width:20px;height:20px;stroke-width:1.8}
+#mobile-nav .mnav-btn.active{color:var(--accent)}
+#mobile-nav .mnav-btn.active svg{filter:drop-shadow(0 0 6px var(--accent))}
+#mobile-nav .mnav-divider{
+  width:1px;background:var(--border);margin:10px 0;flex-shrink:0;
+}
+
+@media(max-width:768px){
+  #mobile-nav{display:flex}
+  /* 지도 터치 힌트 */
+  #mobile-map-hint{display:block}
+}
+
+/* 모바일 지도 힌트 */
+#mobile-map-hint{
+  display:none;
+  position:fixed;
+  bottom:70px;left:50%;transform:translateX(-50%);
+  background:rgba(9,14,26,.82);
+  border:1px solid var(--border);
+  border-radius:20px;padding:6px 16px;
+  font-size:11px;color:var(--muted);white-space:nowrap;
+  z-index:700;
+  backdrop-filter:blur(12px);
+  pointer-events:none;
+  animation:mhintFade 3s ease forwards;
+}
+@keyframes mhintFade{0%{opacity:1}70%{opacity:1}100%{opacity:0}}
+
+/* 모바일 뷰어 배지 */
+#mobile-viewer-badge{
+  display:none;
+  position:fixed;top:58px;left:50%;transform:translateX(-50%);
+  background:rgba(59,130,246,.12);
+  border:1px solid rgba(59,130,246,.25);
+  border-radius:12px;padding:4px 14px;
+  font-size:10px;color:var(--accent);font-weight:600;
+  letter-spacing:.5px;z-index:700;
+  backdrop-filter:blur(8px);
+}
+@media(max-width:768px){
+  #mobile-viewer-badge{display:block}
+}
+
+/* 모바일에서 구역 카드 터치 최적화 */
+@media(max-width:768px){
+  .zn-card{padding:10px 12px;gap:10px}
+  #sb-header{padding:12px 14px 8px}
+
+  /* 패널 탭 터치 영역 확대 */
+  .pn-tab{padding:12px 0;font-size:9.5px}
+
+  /* ── 뷰어 모드: 슬라이더/메모 비활성화 ── */
+  body.is-mobile .sim-slider{pointer-events:none;opacity:.7}
+  body.is-mobile .memo-area{pointer-events:none;opacity:.85}
+
+  /* ── 편집 버튼 전부 숨기기 (실제 함수명 기준) ── */
+  body.is-mobile button[onclick*="showAdd"],
+  body.is-mobile button[onclick*="startDraw"],
+  body.is-mobile button[onclick*="startLegend"],
+  body.is-mobile button[onclick*="deleteTask"],
+  body.is-mobile button[onclick*="deleteWorker"],
+  body.is-mobile button[onclick*="deleteEquip"],
+  body.is-mobile button[onclick*="deleteHazard"],
+  body.is-mobile button[onclick*="confirmDeleteEq"],
+  body.is-mobile button[onclick*="deleteLegendMarker"],
+  body.is-mobile button[onclick*="adjWorkerCount"],
+  body.is-mobile button[onclick*="adjNewWorkerCount"],
+  body.is-mobile button[onclick*="equipPickerAdj"],
+  body.is-mobile button[onclick*="toggleHazardForm"],
+  body.is-mobile button[onclick*="toggleEquipPicker"],
+  body.is-mobile button[onclick*="toggleEqToolbar"],
+  body.is-mobile button[onclick*="showAddTaskForm"],
+  body.is-mobile button[onclick*="showAddWorkerForm"],
+  body.is-mobile button[onclick*="saveWorkerForm"],
+  body.is-mobile button[onclick*="hideAddWorkerForm"],
+  body.is-mobile button[onclick*="confirmEquipAdd"],
+  body.is-mobile .draw-btn,
+  body.is-mobile .add-mk-btn,
+  body.is-mobile .ep-del-btn,
+  body.is-mobile .eq-del,
+  body.is-mobile .memo-save-btn,
+  body.is-mobile .sim-reset-btn,
+  body.is-mobile #zone-toggle-btn{
+    display:none !important;
+  }
+
+  /* ── 추가/폼 영역 숨기기 ── */
+  body.is-mobile [id^="add-worker-form-"],
+  body.is-mobile [id^="add-equip-picker-"],
+  body.is-mobile [id^="equip-picker-"],
+  body.is-mobile [id^="hz-form-"]{
+    display:none !important;
+  }
+
+  /* Leaflet zoom 위치 조정 */
+  .leaflet-control-zoom{margin-bottom:68px !important}
+}
+
+
+/* ── 장비 말풍선 메모 ────────────────────────────────────── */
+.eq-bubble{
+  position:absolute;
+  bottom:44px; left:50%; transform:translateX(-50%);
+  background:rgba(18,10,40,.94);
+  border:1px solid rgba(192,132,252,.45);
+  border-radius:10px;
+  padding:5px 9px;
+  font-size:10px;color:#e2d9ff;
+  white-space:nowrap;max-width:140px;overflow:hidden;text-overflow:ellipsis;
+  pointer-events:none;
+  box-shadow:0 4px 16px rgba(0,0,0,.5);
+  line-height:1.4;
+}
+.eq-bubble::after{
+  content:'';position:absolute;
+  bottom:-7px;left:50%;transform:translateX(-50%);
+  border:7px solid transparent;
+  border-top-color:rgba(192,132,252,.45);
+  border-bottom:none;
+}
+/* ── 지적도 정렬 패널 ─────────────────────────────────────── */
+#overlay-adjust-panel{
+  margin-top:8px;
+}
+.oa-section-label{
+  font-size:9.5px;font-weight:700;color:var(--muted);
+  letter-spacing:.5px;text-transform:uppercase;
+  margin-bottom:5px;margin-top:10px;
+}
+.oa-section-label:first-child{margin-top:0}
+.oa-row{display:flex;gap:6px;margin-bottom:6px}
+.oa-field{flex:1;display:flex;flex-direction:column;gap:3px}
+.oa-field label{font-size:9px;color:var(--muted);font-weight:500}
+.oa-input{
+  width:100%;padding:5px 7px;
+  background:rgba(255,255,255,.04);
+  border:1px solid var(--border2);
+  border-radius:6px;color:var(--text);
+  font-size:11px;font-family:inherit;
+  outline:none;transition:border-color .18s;
+  -moz-appearance:textfield;
+}
+.oa-input::-webkit-inner-spin-button,
+.oa-input::-webkit-outer-spin-button{-webkit-appearance:none}
+.oa-input:focus{border-color:var(--accent)}
+.oa-nudge-row{
+  display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-bottom:8px;
+}
+.oa-nudge-btn{
+  padding:5px 0;border-radius:6px;font-size:10px;font-weight:600;
+  border:1px solid var(--border2);
+  background:rgba(59,130,246,.07);
+  color:var(--accent);cursor:pointer;font-family:inherit;
+  transition:background .15s;
+  display:flex;align-items:center;justify-content:center;gap:3px;
+}
+.oa-nudge-btn:hover{background:rgba(59,130,246,.18)}
+.oa-btn-row{display:flex;gap:5px;margin-top:10px}
+.oa-apply-btn{
+  flex:2;padding:7px;border-radius:8px;
+  background:rgba(59,130,246,.15);border:1px solid rgba(59,130,246,.35);
+  color:var(--accent);font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;
+  transition:background .18s;
+}
+.oa-apply-btn:hover{background:rgba(59,130,246,.28)}
+.oa-save-btn{
+  flex:2;padding:7px;border-radius:8px;
+  background:rgba(16,185,129,.12);border:1px solid rgba(16,185,129,.3);
+  color:var(--green);font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;
+  transition:background .18s;
+}
+.oa-save-btn:hover{background:rgba(16,185,129,.25)}
+.oa-reset-btn{
+  flex:1;padding:7px;border-radius:8px;
+  background:rgba(255,255,255,.03);border:1px solid var(--border);
+  color:var(--muted);font-size:11px;cursor:pointer;font-family:inherit;
+  transition:background .15s;
+}
+.oa-reset-btn:hover{background:rgba(239,68,68,.1);border-color:rgba(239,68,68,.3);color:var(--red)}
+.oa-hint{font-size:9.5px;color:var(--muted);line-height:1.6;margin-top:7px;opacity:.8}
+.oa-saved-tag{
+  display:inline-block;font-size:9px;font-weight:700;
+  background:rgba(16,185,129,.15);border:1px solid rgba(16,185,129,.3);
+  color:var(--green);border-radius:10px;padding:1px 7px;margin-left:5px;
+  vertical-align:middle;
+}
+#align-mode-btn{
+  font-size:9.5px;padding:3px 9px;border-radius:5px;
+  border:1px solid var(--border);background:rgba(255,255,255,.03);
+  color:var(--muted);cursor:pointer;white-space:nowrap;transition:all .18s;
+  font-family:inherit;
+}
+#align-mode-btn.active{
+  background:rgba(59,130,246,.12);border-color:rgba(59,130,246,.3);color:var(--accent);
+}
+
+/* 메모 팝업 오버레이 */
+#eq-memo-popup{
+  position:fixed;z-index:2000;
+  background:rgba(9,14,26,.97);
+  border:1px solid rgba(192,132,252,.4);
+  border-radius:16px;
+  padding:16px;
+  width:260px;
+  box-shadow:0 20px 60px rgba(0,0,0,.7),0 0 0 1px rgba(192,132,252,.1);
+  backdrop-filter:blur(20px);
+  display:none;
+}
+#eq-memo-popup.show{display:block}
+#eq-memo-popup .em-title{
+  font-size:13px;font-weight:700;margin-bottom:10px;
+  display:flex;align-items:center;gap:6px;color:var(--text);
+}
+#eq-memo-popup textarea{
+  width:100%;height:72px;resize:none;
+  background:rgba(255,255,255,.04);
+  border:1px solid var(--border2);
+  border-radius:8px;color:var(--text);
+  font-size:12px;padding:7px 9px;
+  font-family:inherit;line-height:1.5;
+  outline:none;
+  transition:border-color .2s;
+  box-sizing:border-box;
+}
+#eq-memo-popup textarea:focus{border-color:rgba(192,132,252,.5)}
+#eq-memo-popup .em-hint{
+  font-size:10px;color:var(--muted);margin-top:5px;margin-bottom:10px;
+}
+#eq-memo-popup .em-btns{display:flex;gap:6px}
+#eq-memo-popup .em-save{
+  flex:1;padding:7px;border-radius:8px;
+  background:rgba(192,132,252,.18);border:1px solid rgba(192,132,252,.4);
+  color:#c084fc;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;
+  transition:background .18s;
+}
+#eq-memo-popup .em-save:hover{background:rgba(192,132,252,.28)}
+#eq-memo-popup .em-cancel{
+  flex:1;padding:7px;border-radius:8px;
+  background:rgba(255,255,255,.03);border:1px solid var(--border);
+  color:var(--muted);font-size:11px;cursor:pointer;font-family:inherit;
+}
+
+</style>
+</head>
+<body>
+
+<!-- ══ 입장 모달 ═══════════════════════════════════════════ -->
+<div id="entry-modal">
+  <div class="entry-card">
+    <div class="entry-logo">🏗</div>
+    <div class="entry-title">한남3구역 디지털 트윈</div>
+    <div class="entry-sub">현장 공동작업 시스템에 접속합니다.<br>업체명과 이름을 입력해 주세요.</div>
+    <label class="entry-label">업체명</label>
+    <input id="entry-company" class="entry-input" type="text" placeholder="예) 천호엔지니어링" maxlength="30"
+      onkeydown="if(event.key==='Enter')document.getElementById('entry-name').focus()"/>
+    <label class="entry-label">작업자 이름</label>
+    <input id="entry-name" class="entry-input" type="text" placeholder="예) 홍길동" maxlength="20"
+      onkeydown="if(event.key==='Enter')submitEntry()"/>
+    <div id="entry-error" class="entry-error">업체명과 이름을 모두 입력해 주세요.</div>
+    <button class="entry-btn" onclick="submitEntry()">현장 접속하기 →</button>
+  </div>
+</div>
+
+<div id="loading">
+  <div style="display:flex;flex-direction:column;align-items:center;gap:16px">
+    <div style="width:52px;height:52px;border-radius:14px;background:linear-gradient(135deg,rgba(59,130,246,.25),rgba(59,130,246,.05));border:1px solid rgba(59,130,246,.3);display:flex;align-items:center;justify-content:center;font-size:24px;box-shadow:0 0 30px rgba(59,130,246,.2)">🏗</div>
+    <div class="spin"></div>
+    <div style="font-size:11px;color:var(--muted);letter-spacing:1.5px;text-transform:uppercase;font-weight:600">한남3구역 디지털 트윈</div>
+    <div style="font-size:10px;color:var(--muted);opacity:.5">현장 데이터 초기화 중…</div>
+  </div>
+</div>
+<div id="toast"></div>
+
+<!-- ══ TOPBAR ════════════════════════════════════════════════ -->
+<div id="topbar">
+  <div class="tb-logo"><div class="tb-icon">🏗</div>한남3구역 디지털 트윈</div>
+  <div class="tb-div"></div>
+  <div class="tb-sub">철거공사 실시간 현장 모니터링</div>
+  <div class="tb-right">
+    <div id="sim-badge">⚡ SIMULATION</div>
+    <div id="presence-wrap" title="현재 접속 중인 사용자">
+      <div class="presence-avatar you" title="나 (접속 중)">나</div>
+    </div>
+    <div id="user-badge" onclick="resetUser()" title="클릭하면 사용자 변경">
+      <div class="ub-avatar" id="ub-avatar">?</div>
+      <div class="ub-info">
+        <div class="ub-name" id="ub-name">접속 중...</div>
+        <div class="ub-company" id="ub-company"></div>
+      </div>
+    </div>
+    <div class="tb-pill"><div class="live-dot"></div>LIVE</div>
+    <button id="theme-toggle" onclick="toggleTheme()" title="라이트/다크 모드 전환">
+      <svg id="theme-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/>
+      </svg>
+    </button>
+    <div id="clock">--</div>
+  </div>
+</div>
+
+<!-- ══ SIDEBAR ════════════════════════════════════════════ -->
+<div id="sb-btn" onclick="toggleSB()">❮</div>
+<div id="sidebar">
+  <div class="sb-blk">
+    <div class="sb-head" style="display:flex;align-items:center;gap:6px">
+      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="opacity:.6"><polygon points="3 11 22 2 13 21 11 13 3 11"/></svg>
+      시설물 범례
+    </div>
+    <div id="legend-list"></div>
+  </div>
+  <!-- GPS 추적 패널 -->
+  <div class="sb-blk">
+    <div class="sb-head" style="display:flex;align-items:center;justify-content:space-between">
+      <span style="display:flex;align-items:center;gap:5px">
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="opacity:.6"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>
+        📍 내 위치 (GPS)
+      </span>
+      <span id="gps-status-badge" class="gps-status-badge off">● 꺼짐</span>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:6px;margin-top:4px">
+      <button class="coord-btn" id="gps-toggle-btn" onclick="toggleGPS()"
+        style="background:rgba(59,130,246,.08);border-color:rgba(59,130,246,.2)">
+        🛰 GPS 추적 시작
+      </button>
+      <button class="coord-btn" onclick="if(gpsMarker)map.setView(gpsMarker.getLatLng(),18,{animate:true,duration:0.5}); else toast('GPS가 켜져 있지 않습니다')"
+        style="background:rgba(255,255,255,.03);border-color:var(--border);color:var(--muted);font-weight:400">
+        🎯 내 위치로 이동
+      </button>
+      <div id="gps-info" style="display:none;font-size:10px;color:var(--muted);line-height:1.8;padding:6px 8px;background:rgba(255,255,255,.03);border-radius:7px;border:1px solid var(--border)">
+        <div id="gps-coords-display">—</div>
+        <div id="gps-accuracy-display">정확도: —</div>
+        <div id="gps-zone-display" style="color:var(--accent);font-weight:600"></div>
+      </div>
+    </div>
+    <div class="coord-hint">현장에서 내 위치를 실시간으로 표시합니다.<br><b style="color:#4ade80">보정 없이 즉시 사용 가능합니다</b></div>
+  </div>
+
+  <div class="sb-blk">
+    <div class="sb-head" style="display:flex;align-items:center;justify-content:space-between">
+      <span>🗾 지적도 투명도</span>
+      <span id="map-opacity-val" style="font-size:11px;color:var(--accent);font-weight:600">70%</span>
+    </div>
+    <input type="range" id="map-opacity-slider" min="10" max="100" value="70" step="5"
+      oninput="setMapOpacity(this.value)"
+      style="width:100%;accent-color:var(--accent);cursor:pointer;margin-top:4px">
+  </div>
+
+  <!-- ── 지적도 위치 정렬 패널 ── -->
+  <div class="sb-blk">
+    <div class="sb-head" style="display:flex;align-items:center;justify-content:space-between">
+      <span>📐 지적도 위치 조정<span id="oa-saved-indicator" class="oa-saved-tag" style="display:none">저장됨</span></span>
+      <button id="align-mode-btn" onclick="toggleAlignPanel()">조정</button>
+    </div>
+    <div id="overlay-adjust-panel" style="display:none">
+      <div class="oa-hint" style="margin-top:0;margin-bottom:10px">
+        남서(SW)·북동(NE) 꼭짓점 좌표를 조정해 지적도 위치를 맞춥니다.<br>
+        미세 조정 버튼으로 0.0005° 단위 이동 가능합니다.
+      </div>
+
+      <div class="oa-section-label">▼ SW (남서 꼭짓점)</div>
+      <div class="oa-row">
+        <div class="oa-field">
+          <label>위도 (Lat)</label>
+          <input type="number" id="oa-sw-lat" class="oa-input" step="0.0001" value="37.5248">
+        </div>
+        <div class="oa-field">
+          <label>경도 (Lng)</label>
+          <input type="number" id="oa-sw-lng" class="oa-input" step="0.0001" value="126.9892">
+        </div>
+      </div>
+
+      <div class="oa-section-label">▲ NE (북동 꼭짓점)</div>
+      <div class="oa-row">
+        <div class="oa-field">
+          <label>위도 (Lat)</label>
+          <input type="number" id="oa-ne-lat" class="oa-input" step="0.0001" value="37.5400">
+        </div>
+        <div class="oa-field">
+          <label>경도 (Lng)</label>
+          <input type="number" id="oa-ne-lng" class="oa-input" step="0.0001" value="127.0052">
+        </div>
+      </div>
+
+      <div class="oa-section-label">미세 조정 (0.0005° ≈ 55m)</div>
+      <div class="oa-nudge-row">
+        <button class="oa-nudge-btn" onclick="nudgeOverlay(0.0005,0)">⬆ 위로</button>
+        <button class="oa-nudge-btn" onclick="nudgeOverlay(-0.0005,0)">⬇ 아래로</button>
+        <button class="oa-nudge-btn" onclick="nudgeOverlay(0,0.0005)">➡ 우로</button>
+        <button class="oa-nudge-btn" onclick="nudgeOverlay(0,-0.0005)">⬅ 좌로</button>
+      </div>
+      <div class="oa-nudge-row">
+        <button class="oa-nudge-btn" onclick="scaleOverlay(1.02)" style="color:#f59e0b;border-color:rgba(245,158,11,.3)">🔍 크게</button>
+        <button class="oa-nudge-btn" onclick="scaleOverlay(0.98)" style="color:#f59e0b;border-color:rgba(245,158,11,.3)">🔎 작게</button>
+      </div>
+
+      <div class="oa-btn-row">
+        <button class="oa-apply-btn" onclick="applyOverlayBounds()">적용</button>
+        <button class="oa-save-btn" onclick="saveOverlayBounds()">💾 저장</button>
+        <button class="oa-reset-btn" onclick="resetOverlayBounds()">초기화</button>
+      </div>
+      <div class="oa-hint">저장하면 새로고침 후에도 유지됩니다.</div>
+    </div>
+  </div>
+  <div class="sb-blk" style="flex:1;overflow:hidden;display:flex;flex-direction:column;border-bottom:none;padding-bottom:0">
+    <div class="sb-head" style="display:flex;align-items:center;justify-content:space-between">
+      <span>🏗 구역 목록 <span id="total-workers-pill" style="font-weight:400;color:var(--accent);font-size:9px;letter-spacing:0;margin-left:4px"></span></span>
+      <button id="zone-toggle-btn" onclick="toggleZones()" style="font-size:10px;padding:3px 8px;border-radius:5px;border:1px solid var(--border);background:rgba(255,255,255,.03);color:var(--muted);cursor:pointer;white-space:nowrap;transition:all .18s">구역 표시</button>
+    </div>
+    <div class="sb-scroll" id="zone-list"></div>
+  </div>
+  <div class="sb-blk">
+    <div class="sb-head" style="display:flex;align-items:center;gap:6px">
+      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="opacity:.6"><circle cx="12" cy="10" r="3"/><path d="M12 21.7C17.3 17 20 13 20 10a8 8 0 1 0-16 0c0 3 2.7 6.9 8 11.7z"/></svg>
+      좌표 도구
+    </div>
+    <button class="coord-btn" id="coord-btn" onclick="toggleCoord()">좌표 클릭 모드 켜기</button>
+    <div class="coord-hint">지도 클릭 → <code style="color:var(--accent);font-size:10px">[y,x]</code> 좌표 표시·복사<br>실제 지적도 교체 후 마커 위치 지정에 활용</div>
+  </div>
+  <div class="sb-blk">
+    <div class="sb-head" style="display:flex;align-items:center;gap:6px">
+      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="opacity:.6"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
+      지적도 PDF 출력
+    </div>
+    <button class="coord-btn" id="pdf-export-btn" onclick="exportMapPDF()" style="background:rgba(56,189,248,.08);border-color:rgba(56,189,248,.3);color:var(--accent)">
+      📄 전체 지적도 PDF 저장
+    </button>
+    <div class="coord-hint">현재 지적도 위에 표기된 마커·구역 경계를 포함하여 PDF로 저장합니다</div>
+  </div>
+</div>
+
+<!-- ══ INFO PANEL ════════════════════════════════════════ -->
+<div id="panel">
+  <div id="pn-head">
+    <div class="pn-title-row">
+      <div><div id="pn-zone"></div><div id="pn-comp"></div></div>
+      <div id="pn-close" onclick="closePanel()">✕</div>
+    </div>
+    <div id="pn-tabs">
+      <div class="pn-tab active" data-tab="progress" onclick="switchTab('progress')">
+        <svg class="ti" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+        <span class="tl">공정</span>
+      </div>
+      <div class="pn-tab" data-tab="workers" onclick="switchTab('workers')">
+        <svg class="ti" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        <span class="tl">인원</span>
+      </div>
+      <div class="pn-tab" data-tab="equip" onclick="switchTab('equip')">
+        <svg class="ti" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="3" width="15" height="13" rx="2"/><path d="M16 8h4l3 5v3h-7V8z"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
+        <span class="tl">장비</span>
+      </div>
+      <div class="pn-tab" data-tab="hazard" onclick="switchTab('hazard')">
+        <svg class="ti" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="m10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+        <span class="tl">위험</span>
+      </div>
+      <div class="pn-tab" data-tab="memo" onclick="switchTab('memo')">
+        <svg class="ti" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+        <span class="tl">메모</span>
+      </div>
+      <div class="pn-tab" data-tab="facilities" onclick="switchTab('facilities')">
+        <svg class="ti" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
+        <span class="tl">시설물</span>
+      </div>
+    </div>
+  </div>
+  <div id="pn-body"></div>
+</div>
+
+<!-- MAP -->
+<div id="map"></div>
+
+<!-- Coord bar -->
+<div id="coord-bar">
+  <span class="cb-label">📍</span>
+  <span id="coord-val">지도를 클릭하세요</span>
+  <button class="cb-btn" id="copy-btn" onclick="copyCoord()">복사</button>
+  <button class="cb-btn" onclick="toggleCoord()">닫기</button>
+</div>
+
+<div id="map-hint">🖱 스크롤·드래그 : 확대·이동<br>🖊 구역 클릭 → 철거공사 현황 패널</div>
+<!-- ══ 건설장비 배치 툴바 ════════════════════════════════ -->
+<div id="eq-toolbar">
+  <div class="eq-tb-hd">
+    <div class="eq-tb-title">🏗 차량계 건설기계</div>
+    <div class="eq-tb-toggle" onclick="toggleEqToolbar()">접기</div>
+  </div>
+  <div id="eq-grid" class="eq-tb-grid"></div>
+  <div class="eq-tb-hint" id="eq-hint">클릭 선택 후 지도에 배치</div>
+</div>
+<!-- ══ 드로잉 힌트 바 ══════════════════════════════════════ -->
+<div id="draw-hint">
+  <span>✏️ <b id="draw-hint-label"></b> 그리기</span>
+  <span style="color:var(--muted);font-size:11px">클릭: 점 추가 · 더블클릭: 완료 · ESC: 취소</span>
+  <div class="dh-btns">
+    <button onclick="cancelDraw()" style="border:1px solid var(--red);background:transparent;color:var(--red)">취소</button>
+    <button onclick="finishDraw()" style="border:1px solid var(--accent);background:rgba(56,189,248,.15);color:var(--accent)">완료</button>
+  </div>
+</div>
+
+<!-- ══ 공동작업 상태 ══════════════════════════════════════ -->
+<div id="collab-bar">
+  <div class="cb-dot"></div>
+  <span id="collab-text">연결 중…</span>
+  <span style="font-size:10px;cursor:pointer;margin-left:4px;opacity:.6" onclick="toggleFbHint()" title="설정 방법">❓</span>
+</div>
+<div id="fb-setup-hint">
+  <b style="color:var(--accent)">🌐 공동작업 설정 방법</b><br>
+  1. <a href="https://console.firebase.google.com" target="_blank" style="color:var(--accent)">Firebase Console</a> 접속<br>
+  2. 새 프로젝트 생성<br>
+  3. Realtime Database 생성 (테스트 모드)<br>
+  4. 프로젝트 설정 → 앱 추가 → 웹<br>
+  5. 아래 <code>FB_CONFIG</code> 값을 교체하세요<br>
+  <div style="margin-top:8px;padding:7px;border-radius:6px;background:rgba(255,255,255,.04);font-size:10px;color:var(--muted)">
+    소스코드 상단 <code>FB_CONFIG</code> 섹션
+  </div>
+</div>
+
+
+
+<script>
+/* ═══════════════════════════════════════════════════════════════
+   ██████╗  █████╗ ████████╗ █████╗
+   SITE_DATA — 이 블록만 편집하면 전체에 반영됩니다
+═══════════════════════════════════════════════════════════════ */
+const SITE_DATA = {
+
+  /* ── 지도 설정 (OpenStreetMap 실좌표) ───────────────────── */
+  map: {
+    center:  [37.5370, 127.0010],   // 한남3구역 중심
+    zoom:    16,
+    minZoom: 13,
+    maxZoom: 20,
+    /* 전체 구역 표시용 bounds */
+    fullBounds: [[37.5280, 126.9920], [37.5450, 127.0120]],
+    /* 지적도 SVG 오버레이 bounds (OSM 위에 정렬)
+       — 아래 좌표는 한남3구역 기본값. 사이드바 [지적도 위치 조정] 패널로 실시간 미세조정 가능 */
+    cadastralUrl: './hannam3_zone_map.svg',
+    cadastralBounds: [[37.5275, 126.9910], [37.5400, 127.0020]],
+    cadastralOpacity: 0.70
+  },
+
+  /* ── 시설물 범례 마커 (1240×1755 실좌표, Leaflet [lat,lng]=[H-py,px]) ─── */
+  legend: [
+    { id:"pedestrian", label:"보행자도로",  emoji:"🚶", color:"#22c55e", bg:"rgba(34,197,94,.15)", visible:false,
+      markers:[]},
+    { id:"vehicle",    label:"차량이동통로", emoji:"🚗", color:"#ef4444", bg:"rgba(239,68,68,.15)", visible:false,
+      markers:[]},
+    { id:"restroom",   label:"화장실",      emoji:"🚻", color:"#38bdf8", bg:"rgba(56,189,248,.15)", visible:true,
+      markers:[]},
+    { id:"aed",        label:"AED 위치",    emoji:"🆘", color:"#f87171", bg:"rgba(248,113,113,.15)", visible:true,
+      markers:[]},
+    { id:"shower",     label:"샤워실",      emoji:"🚿", color:"#a78bfa", bg:"rgba(167,139,250,.15)", visible:false,
+      markers:[]},
+    { id:"office",     label:"사무실",      emoji:"🏢", color:"#38bdf8", bg:"rgba(56,189,248,.15)", visible:true,
+      markers:[]},
+    { id:"assembly",   label:"비상집결지",  emoji:"🏃", color:"#4ade80", bg:"rgba(74,222,128,.15)", visible:true,
+      markers:[]},
+    { id:"highrisk",   label:"고위험작업구간", emoji:"⚠", color:"#ef4444", bg:"rgba(239,68,68,.15)", visible:true,
+      markers:[]},
+    { id:"safetykeeper", label:"안전지킴이 위치", emoji:"👷🦺", color:"#facc15", bg:"rgba(250,204,21,.15)", visible:true,
+      markers:[]},
+    { id:"signalman",    label:"신호수·유도자",  emoji:"🙋", color:"#fb923c", bg:"rgba(251,146,60,.15)", visible:true,
+      markers:[]},
+    { id:"scaffolding_legend", label:"비계설치구간", emoji:"🪜",   color:"#c084fc", bg:"rgba(192,132,252,.15)", visible:true,
+      markers:[], isDrawType:"scaffolding"}
+  ],
+
+  /* ── 구역(업체) 데이터 ─────────────────────────────────────── */
+  zones: {
+
+    /* ══════════════════════════════════════════════════════
+       A구역 — 천호엔지니어링
+    ══════════════════════════════════════════════════════ */
+    A: {
+      id:"A", label:"A", company:"천호엔지니어링",
+      desc:"철거공사", color:"#fbbf24",
+      polygon:[[37.5430,126.9948],[37.5438,126.9972],[37.5443,127.0010],[37.5440,127.0048],[37.5432,127.0075],[37.5418,127.0062],[37.5408,127.0030],[37.5402,126.9988],[37.5405,126.9952]],
+      zoomTarget:[37.5422, 127.0010], zoomLevel:16,
+
+      /* 공정률 */
+      tasks:[],
+
+      /* 투입인원 직종별 */
+      workers:[],
+
+      /* 장비현황 */
+      equipment:[],
+
+      /* 위험구역 */
+      hazards:[],
+
+      /* 오늘의 주요 메모 */
+      memo:{
+        date:"2026-03-25", author:"현장소장 김철수",
+        priority:"important",
+        content:"골조 3~5층 철근 배근 작업 진행 중.\n날씨 양호, 예정 공정 대비 +2일 선행.\n내일 콘크리트 타설 예정 — 레미콘 발주 확인 요망.\n안전교육 14:00 실시 예정."
+      }
+    },
+
+    /* ══════════════════════════════════════════════════════
+       B구역 — 지디건설
+    ══════════════════════════════════════════════════════ */
+    B: {
+      id:"B", label:"C", company:"지디건설",
+      desc:"철거공사", color:"#38bdf8",
+      polygon:[[37.5418,127.0062],[37.5432,127.0075],[37.5428,127.0108],[37.5405,127.0112],[37.5375,127.0102],[37.5348,127.0082],[37.5338,127.0048],[37.5358,127.0025],[37.5388,127.0018],[37.5408,127.0030]],
+      zoomTarget:[37.5383, 127.0065], zoomLevel:16,
+
+      tasks:[],
+
+      workers:[],
+
+      equipment:[],
+
+      hazards:[],
+
+      memo:{
+        date:"2026-03-25", author:"현장소장 박민준",
+        priority:"urgent",
+        content:"기계설비 배관 마무리 단계 — 오늘 내 완료 목표.\n전기 배선 착수 3일 후 예정 (3/28).\n석면 철거 잔여 구간 환경부 검사 결과 대기 중.\n발주처 방문 16:00 예정 — 현장 정리 지시."
+      }
+    },
+
+    /* ══════════════════════════════════════════════════════
+       C구역(표시명:B) — 참마루건설
+    ══════════════════════════════════════════════════════ */
+    C: {
+      id:"C", label:"B", company:"참마루건설",
+      desc:"철거공사", color:"#4ade80",
+      polygon:[[37.5402,126.9948],[37.5402,126.9988],[37.5408,127.0030],[37.5388,127.0018],[37.5358,127.0025],[37.5338,127.0048],[37.5318,127.0022],[37.5298,127.0002],[37.5292,126.9962],[37.5308,126.9932],[37.5348,126.9928],[37.5378,126.9932],[37.5398,126.9940]],
+      zoomTarget:[37.5348, 126.9982], zoomLevel:16,
+
+      tasks:[],
+
+      workers:[],
+
+      equipment:[],
+
+      hazards:[],
+
+      memo:{
+        date:"2026-03-25", author:"현장소장 이상훈",
+        priority:"urgent",
+        content:"지하 2층 굴착 완료 (EL -8.5m).\n지하 3층 굴착 착수 — 지하수 용출 감시 강화.\n차수 그라우팅 3/27 착공 예정, 전문업체 현장 방문 확인.\n오늘 강우 예보 (오후) — 비탈면 배수로 점검 지시."
+      }
+    }
+  }
+};
+
+/* ═══════════════════════════════════════════════════════════════
+   유틸
+═══════════════════════════════════════════════════════════════ */
+function calcOverall(zone) {
+  const t = zone.tasks;
+  if(!t || t.length===0) return 0;
+  return Math.round(t.reduce((s,x)=>s+x.pct,0) / t.length);
+}
+function taskStatus(pct) {
+  return pct===100?'완료':pct>0?'진행중':'대기';
+}
+function statusClass(pct) {
+  return pct===100?'s-done':pct>0?'s-ing':'s-wait';
+}
+function ovColor(pct) {
+  return pct>=70?'var(--green)':pct>=40?'var(--yellow)':'var(--red)';
+}
+function totalWorkers(zone) {
+  return zone.workers.reduce((s,w)=>s+w.count,0);
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   앱 상태
+═══════════════════════════════════════════════════════════════ */
+let map, mGroups={}, coordMode=false, lastXY=null, sbOpen=true;
+let activeZoneId=null, activeTab='progress';
+let _mapInitZoom = 0; /* 초기 전체 지도 줌 레벨 — 구역 클릭 시 이보다 작아지지 않음 */
+let hazardLayers={};   // {zoneId: {hazardId: L.circle}}
+let simModified=false;
+
+/* ═══════════════════════════════════════════════════════════════
+   지도 초기화
+═══════════════════════════════════════════════════════════════ */
+function initMap(){
+  const {center, zoom, minZoom, maxZoom, fullBounds} = SITE_DATA.map;
+  map=L.map('map',{
+    minZoom, maxZoom,
+    zoomControl: true,
+    attributionControl: true,
+    /* ── 부드러운 줌 ── */
+    zoomSnap: 0,
+    zoomDelta: 0.5,
+    wheelPxPerZoomLevel: 80,
+    zoomAnimation: true,
+    markerZoomAnimation: true,
+    /* ── 부드러운 패닝 ── */
+    inertia: true,
+    inertiaDeceleration: 2500,
+    inertiaMaxSpeed: 1200,
+    easeLinearity: 0.2,
+    /* ── 모바일 핀치줌 ── */
+    touchZoom: true,
+    bounceAtZoomLimits: false,
+  });
+
+  /* OpenStreetMap 타일 레이어 */
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+    maxZoom: 20,
+    className: 'map-image-smooth'
+  }).addTo(map);
+
+  /* 지적도 SVG 오버레이 (OSM 위에 반투명으로 표시)
+     — localStorage에 저장된 보정값이 있으면 우선 사용 */
+  const {cadastralUrl, cadastralBounds: defaultBounds, cadastralOpacity} = SITE_DATA.map;
+  const savedBoundsRaw = localStorage.getItem('cadastralBounds');
+  let activeBounds = defaultBounds;
+  if(savedBoundsRaw){
+    try{
+      const sb = JSON.parse(savedBoundsRaw);
+      if(Array.isArray(sb) && sb.length===2) activeBounds = sb;
+    }catch(e){}
+  }
+  mapOverlay = L.imageOverlay(cadastralUrl, activeBounds, {
+    opacity: cadastralOpacity,
+    className: 'map-image-smooth',
+    zIndex: 200,
+    interactive: false
+  }).addTo(map);
+  /* 정렬 패널 입력값 초기화 */
+  initAlignPanel(activeBounds, savedBoundsRaw !== null);
+
+  _mapInitZoom = zoom;
+  map.setView(center, zoom, {animate: false});
+  setTimeout(()=>{ map.invalidateSize(false); }, 60);
+  map.on('click',onMapClick);
+  map.on('dblclick',(e)=>{ if(drawMode){ L.DomEvent.stop(e); finishDraw(); } });
+  map.on('mousemove',(e)=>{ onMapMove(e); if(drawMode) updateTempPreview(e.latlng); });
+  map.on('moveend', saveActiveZonePos);
+  loadSavedZonePos();
+  buildLegend();
+  buildZones();
+  buildHazards();
+  renderSidebar();
+  setTimeout(()=>document.getElementById('loading').classList.add('fade'),600);
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   범례 마커
+═══════════════════════════════════════════════════════════════ */
+function mkLegendIcon(cat, markerId, memo){
+  const hasMemo = memo && memo.trim();
+  return L.divIcon({
+    html:`<div class="leg-wrap" style="border-color:${cat.color};box-shadow:0 0 10px ${cat.color}44,0 2px 8px rgba(0,0,0,.5)">
+      ${cat.emoji}
+      <div class="eq-del" onclick="event.stopPropagation();deleteLegendMarker('${cat.id}','${markerId}')" title="삭제">✕</div>
+      ${hasMemo ? `<div class="eq-bubble" style="border-color:${cat.color}66;color:#e2d9ff">${memo}</div>` : ''}
+    </div>`,
+    iconSize:[34,34],iconAnchor:[17,17],className:''
+  });
+}
+function buildLegendLayer(cat){
+  const g=L.layerGroup();
+  cat.markers.forEach(m=>{
+    if(!m.id) m.id='lm_'+Date.now()+'_'+Math.random().toString(36).slice(2,6);
+    if(m.memo===undefined) m.memo='';
+    const mk=L.marker(m.pos,{icon:mkLegendIcon(cat,m.id,m.memo),draggable:!IS_MOBILE,zIndexOffset:100});
+    const hasMemo = m.memo && m.memo.trim();
+    mk.bindTooltip(
+      `<div style="background:#122030;border:1px solid ${cat.color}55;color:#e2eeff;
+                  padding:6px 11px;border-radius:8px;font-size:11px;
+                  box-shadow:0 4px 16px rgba(0,0,0,.5)">
+        ${cat.emoji} <b>${m.label}</b>
+        ${hasMemo ? `<br><span style="color:${cat.color};font-size:10px">💬 ${m.memo}</span>` : ''}
+        <br><span style="color:#6b93b8;font-size:10px">클릭: 메모 &nbsp;|&nbsp; 드래그: 이동 &nbsp;|&nbsp; ✕: 삭제</span>
+       </div>`,
+      {direction:'top',opacity:1,className:''}
+    );
+    /* 클릭 → 메모 팝업 (PC 전용) */
+    mk.on('click',(e)=>{
+      L.DomEvent.stop(e);
+      if(IS_MOBILE||equipMode||drawMode||legendPlaceMode) return;
+      openMemoPopup(cat.emoji, m.label, m.memo, cat.color, (memo)=>{
+        m.memo = memo;
+        map.removeLayer(mGroups[cat.id]);
+        mGroups[cat.id]=buildLegendLayer(cat);
+        mGroups[cat.id].addTo(map);
+        syncLegend();
+        toast(memo?`💬 메모 저장됨: "${memo.slice(0,20)}${memo.length>20?'…':''}"`:'💬 메모 삭제됨');
+      });
+    });
+    mk.on('dragend',()=>{
+      const ll=mk.getLatLng();
+      m.pos=[parseFloat(ll.lat.toFixed(6)),parseFloat(ll.lng.toFixed(6))];
+      syncLegend();
+      toast(`📍 ${m.label} 위치 저장됨`);
+      renderSidebar();
+    });
+    mk.addTo(g);
+  });
+  return g;
+}
+function buildLegend(){
+  SITE_DATA.legend.forEach(cat=>{
+    if(DRAW_TYPES.includes(cat.id)){
+      mGroups[cat.id]=L.layerGroup();
+    } else {
+      mGroups[cat.id]=buildLegendLayer(cat);
+    }
+    if(cat.visible) mGroups[cat.id].addTo(map);
+  });
+}
+function toggleLegend(id){
+  if(DRAW_TYPES.includes(id)){
+    const d=drawData[id];
+    d.visible=!d.visible;
+    d.leafletLines.forEach(l=>d.visible?l.addTo(map):map.removeLayer(l));
+    const cat=SITE_DATA.legend.find(c=>c.id===id);
+    if(cat) cat.visible=d.visible;
+    renderSidebar();
+    const cat2=SITE_DATA.legend.find(c=>c.id===id);
+    if(cat2) toast(`${cat2.emoji} ${cat2.label} ${d.visible?'표시됨':'숨겨짐'}`);
+    return;
+  }
+  const cat=SITE_DATA.legend.find(c=>c.id===id);
+  if(!cat)return;
+  cat.visible=!cat.visible;
+  cat.visible?mGroups[id].addTo(map):map.removeLayer(mGroups[id]);
+  renderSidebar();
+  toast(`${cat.emoji} ${cat.label} ${cat.visible?'표시됨':'숨겨짐'}`);
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   구역 폴리곤
+═══════════════════════════════════════════════════════════════ */
+let zonesVisible = false;   // 초기: 구역 숨김
+let zoneLabelMarkers = [];  // 구역 라벨 마커 목록
+let mapOverlay = null;
+
+function setMapOpacity(val){
+  const v = Number(val);
+  if(mapOverlay) mapOverlay.setOpacity(v / 100);
+  const el = document.getElementById('map-opacity-val');
+  if(el) el.textContent = v + '%';
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   지적도 오버레이 위치 정렬 도구
+═══════════════════════════════════════════════════════════════ */
+function initAlignPanel(bounds, hasSaved){
+  /* 입력 필드에 현재 bounds 값 채우기 */
+  const set = (id, v) => { const el=document.getElementById(id); if(el) el.value=v; };
+  set('oa-sw-lat', bounds[0][0]);
+  set('oa-sw-lng', bounds[0][1]);
+  set('oa-ne-lat', bounds[1][0]);
+  set('oa-ne-lng', bounds[1][1]);
+  /* 저장된 값이 있으면 배지 표시 */
+  const badge = document.getElementById('oa-saved-indicator');
+  if(badge) badge.style.display = hasSaved ? 'inline-block' : 'none';
+}
+
+function toggleAlignPanel(){
+  const panel = document.getElementById('overlay-adjust-panel');
+  const btn   = document.getElementById('align-mode-btn');
+  const isOpen = panel.style.display !== 'none';
+  panel.style.display = isOpen ? 'none' : 'block';
+  btn.textContent = isOpen ? '조정' : '닫기';
+  btn.classList.toggle('active', !isOpen);
+}
+
+function _readBoundsFromInputs(){
+  const swLat = parseFloat(document.getElementById('oa-sw-lat').value);
+  const swLng = parseFloat(document.getElementById('oa-sw-lng').value);
+  const neLat = parseFloat(document.getElementById('oa-ne-lat').value);
+  const neLng = parseFloat(document.getElementById('oa-ne-lng').value);
+  return [swLat, swLng, neLat, neLng];
+}
+
+function applyOverlayBounds(){
+  if(!mapOverlay){ toast('지도가 로드되지 않았습니다'); return; }
+  const [swLat,swLng,neLat,neLng] = _readBoundsFromInputs();
+  if([swLat,swLng,neLat,neLng].some(isNaN)){ toast('좌표값을 올바르게 입력해 주세요'); return; }
+  mapOverlay.setBounds([[swLat,swLng],[neLat,neLng]]);
+  toast('지적도 위치 업데이트됨 — 저장하려면 [💾 저장] 클릭');
+}
+
+function saveOverlayBounds(){
+  if(!mapOverlay){ toast('지도가 로드되지 않았습니다'); return; }
+  const [swLat,swLng,neLat,neLng] = _readBoundsFromInputs();
+  if([swLat,swLng,neLat,neLng].some(isNaN)){ toast('좌표값을 올바르게 입력해 주세요'); return; }
+  const boundsArr = [[swLat,swLng],[neLat,neLng]];
+  localStorage.setItem('cadastralBounds', JSON.stringify(boundsArr));
+  mapOverlay.setBounds(boundsArr);
+  const badge = document.getElementById('oa-saved-indicator');
+  if(badge) badge.style.display = 'inline-block';
+  toast('✅ 저장 완료! 새로고침 후에도 이 위치가 유지됩니다');
+}
+
+function resetOverlayBounds(){
+  localStorage.removeItem('cadastralBounds');
+  const b = SITE_DATA.map.cadastralBounds;
+  document.getElementById('oa-sw-lat').value = b[0][0];
+  document.getElementById('oa-sw-lng').value = b[0][1];
+  document.getElementById('oa-ne-lat').value = b[1][0];
+  document.getElementById('oa-ne-lng').value = b[1][1];
+  if(mapOverlay) mapOverlay.setBounds(b);
+  const badge = document.getElementById('oa-saved-indicator');
+  if(badge) badge.style.display = 'none';
+  toast('초기값으로 되돌렸습니다');
+}
+
+/* 상하좌우 미세 이동 — 전체 박스를 delta만큼 이동 */
+function nudgeOverlay(dLat, dLng){
+  if(!mapOverlay) return;
+  const b = mapOverlay.getBounds();
+  const swLat = b.getSouth() + dLat;
+  const swLng = b.getWest()  + dLng;
+  const neLat = b.getNorth() + dLat;
+  const neLng = b.getEast()  + dLng;
+  mapOverlay.setBounds([[swLat,swLng],[neLat,neLng]]);
+  /* 입력 필드 동기화 */
+  document.getElementById('oa-sw-lat').value = swLat.toFixed(6);
+  document.getElementById('oa-sw-lng').value = swLng.toFixed(6);
+  document.getElementById('oa-ne-lat').value = neLat.toFixed(6);
+  document.getElementById('oa-ne-lng').value = neLng.toFixed(6);
+}
+
+/* 확대/축소 — 중심 고정, 크기 비율 변경 */
+function scaleOverlay(factor){
+  if(!mapOverlay) return;
+  const b = mapOverlay.getBounds();
+  const cLat = (b.getSouth() + b.getNorth()) / 2;
+  const cLng = (b.getWest()  + b.getEast())  / 2;
+  const halfLat = (b.getNorth() - b.getSouth()) / 2 * factor;
+  const halfLng = (b.getEast()  - b.getWest())  / 2 * factor;
+  const swLat = cLat - halfLat, swLng = cLng - halfLng;
+  const neLat = cLat + halfLat, neLng = cLng + halfLng;
+  mapOverlay.setBounds([[swLat,swLng],[neLat,neLng]]);
+  document.getElementById('oa-sw-lat').value = swLat.toFixed(6);
+  document.getElementById('oa-sw-lng').value = swLng.toFixed(6);
+  document.getElementById('oa-ne-lat').value = neLat.toFixed(6);
+  document.getElementById('oa-ne-lng').value = neLng.toFixed(6);
+  toast(factor>1?'지적도 크게':'지적도 작게');
+}
+
+function buildZones(){
+  Object.values(SITE_DATA.zones).forEach(z=>{
+    // 폴리곤: 항상 지도에 올라있되, 초기엔 투명(클릭 영역은 살아있음)
+    const poly=L.polygon(z.polygon,{color:z.color,fillColor:z.color,fillOpacity:0,weight:0,dashArray:'7,4'});
+    const ctr=poly.getBounds().getCenter();
+    const lbl=L.marker(ctr,{
+      icon:L.divIcon({html:`<div class="zone-lbl" style="color:${z.color};font-size:26px;text-shadow:0 0 18px ${z.color}66,0 2px 8px rgba(0,0,0,.6)">${z.label}</div>`,
+        iconSize:[44,44],iconAnchor:[22,22],className:''}),interactive:false});
+    poly.on('mouseover',function(){if(zonesVisible)this.setStyle({fillOpacity:.13,weight:2.5})});
+    poly.on('mouseout', function(){if(zonesVisible)this.setStyle({fillOpacity:.1, weight:2})});
+    poly.on('click',(e)=>{ if(equipMode||drawMode||legendPlaceMode) return; focusZone(z.id); });
+    z._poly=poly;
+    z._lbl=lbl;
+    zoneLabelMarkers.push(lbl);
+    poly.addTo(map); // 항상 지도에 추가 (투명 상태로)
+  });
+}
+
+function toggleZones(){
+  zonesVisible=!zonesVisible;
+  Object.values(SITE_DATA.zones).forEach(z=>{
+    if(!z._poly) return;
+    if(zonesVisible){
+      // 구역 경계 표시
+      z._poly.setStyle({fillOpacity:.1,weight:2,opacity:1});
+      z._lbl && z._lbl.addTo(map);
+    } else {
+      // 구역 경계 숨김 (폴리곤은 지도에 남겨서 클릭 가능하게)
+      z._poly.setStyle({fillOpacity:0,weight:0,opacity:0});
+      z._lbl && map.removeLayer(z._lbl);
+    }
+  });
+  const btn=document.getElementById('zone-toggle-btn');
+  if(btn){
+    btn.textContent = zonesVisible ? '구역 숨기기' : '구역 표시';
+    btn.style.borderColor = zonesVisible ? 'rgba(56,189,248,.5)' : 'var(--border)';
+    btn.style.color = zonesVisible ? 'var(--accent)' : 'var(--muted)';
+    btn.style.background = zonesVisible ? 'rgba(56,189,248,.1)' : 'rgba(255,255,255,.03)';
+  }
+  toast(zonesVisible ? '🗺 구역 경계 표시됨' : '🗺 구역 경계 숨겨짐');
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   위험구역 레이어
+═══════════════════════════════════════════════════════════════ */
+function buildHazards(){
+  Object.values(SITE_DATA.zones).forEach(z=>{
+    hazardLayers[z.id]={};
+    z.hazards.forEach(h=>{
+      const circle=L.circle(h.pos,{
+        radius:h.radius, color:h.color,
+        fillColor:h.color, fillOpacity:.2, weight:2,
+        dashArray:'4,3', className:'hazard-path'
+      }).bindTooltip(
+        `<div style="background:#122030;border:1px solid ${h.color}55;color:#e2eeff;padding:6px 10px;border-radius:7px;font-size:11px;max-width:160px;box-shadow:0 4px 16px rgba(0,0,0,.5)">
+          ⚠️ <b>${h.name}</b><br><span style="color:#6b93b8">${h.detail}</span></div>`,
+        {direction:'top',opacity:1,className:''}
+      );
+      hazardLayers[z.id][h.id]=circle;
+      if(h.visible) circle.addTo(map);
+    });
+  });
+}
+function toggleHazardOnMap(zoneId,hazardId,show){
+  const c=hazardLayers[zoneId]?.[hazardId];
+  if(!c)return;
+  show?c.addTo(map):map.removeLayer(c);
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   마지막 작업 위치 저장 / 복원
+═══════════════════════════════════════════════════════════════ */
+function saveActiveZonePos(){
+  if(!activeZoneId) return;
+  const z=SITE_DATA.zones[activeZoneId];
+  if(!z) return;
+  const c=map.getCenter();
+  const zoom=map.getZoom();
+  z.lastWorkPos=[parseFloat(c.lat.toFixed(6)),parseFloat(c.lng.toFixed(6))];
+  z.lastWorkZoom=zoom;
+  try{
+    const saved=JSON.parse(localStorage.getItem('hn3_lastPos')||'{}');
+    saved[activeZoneId]={pos:z.lastWorkPos,zoom};
+    localStorage.setItem('hn3_lastPos',JSON.stringify(saved));
+  }catch(e){}
+  /* 사이드바 카드 위치 뱃지 업데이트 */
+  const badge=document.getElementById(`lw-badge-${activeZoneId}`);
+  if(badge) badge.style.display='flex';
+}
+function loadSavedZonePos(){
+  try{
+    const saved=JSON.parse(localStorage.getItem('hn3_lastPos')||'{}');
+    Object.entries(saved).forEach(([id,data])=>{
+      const z=SITE_DATA.zones[id];
+      if(z){ z.lastWorkPos=data.pos; z.lastWorkZoom=data.zoom; }
+    });
+  }catch(e){}
+}
+function resetZoneLastPos(id){
+  const z=SITE_DATA.zones[id];
+  if(!z) return;
+  delete z.lastWorkPos; delete z.lastWorkZoom;
+  try{
+    const saved=JSON.parse(localStorage.getItem('hn3_lastPos')||'{}');
+    delete saved[id];
+    localStorage.setItem('hn3_lastPos',JSON.stringify(saved));
+  }catch(e){}
+  renderSidebar();
+  toast(`🔄 ${z.label}구역 위치 초기화됨`);
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   구역 포커스
+═══════════════════════════════════════════════════════════════ */
+function returnToFullMap(){
+  const {center, zoom, fullBounds} = SITE_DATA.map;
+  map.fitBounds(fullBounds, {animate:false, padding:[20,20]});
+  // 구역 표시 중이면 정상 스타일, 아니면 투명 유지
+  Object.values(SITE_DATA.zones).forEach(z=>z._poly&&z._poly.setStyle(
+    zonesVisible ? {fillOpacity:.1,weight:2,opacity:1} : {fillOpacity:0,weight:0,opacity:0}
+  ));
+  closePanel();
+  toast('🗺 전체 지적도로 이동');
+}
+function focusZone(id){
+  const z=SITE_DATA.zones[id];
+  if(!z)return;
+  /* 같은 구역을 다시 클릭 → 전체 지도로 복귀 */
+  if(activeZoneId===id){
+    returnToFullMap();
+    return;
+  }
+  activeZoneId=id;
+  /* 폴리곤 전체가 보이도록 자동 fitBounds (줌 최소 0 보장) */
+  if(z.polygon && z.polygon.length > 0 && !z.lastWorkPos){
+    const lats = z.polygon.map(p=>p[0]);
+    const lngs = z.polygon.map(p=>p[1]);
+    const sw = [Math.min(...lats), Math.min(...lngs)];
+    const ne = [Math.max(...lats), Math.max(...lngs)];
+    const center = [(sw[0]+ne[0])/2, (sw[1]+ne[1])/2];
+    const lBounds = L.latLngBounds(sw, ne);
+    /* fitBounds가 계산한 줌을 가져와서 초기 전체지도 줌보다 작아지지 않도록 제한 */
+    const fitZoom = map.getBoundsZoom(lBounds, false);
+    const zoom = Math.max(fitZoom, _mapInitZoom);
+    /* animate:false — 애니메이션 중 GPU 레이어 충돌로 파란 화면 발생하므로 즉시 이동 */
+    map.setView(center, zoom, {animate:false});
+  } else {
+    const target = z.lastWorkPos || z.zoomTarget;
+    const zoom   = z.lastWorkZoom != null ? z.lastWorkZoom : z.zoomLevel;
+    map.setView(target, zoom, {animate:false});
+  }
+  // 비활성 구역: 구역표시 중이면 흐리게, 아니면 투명
+  Object.values(SITE_DATA.zones).forEach(d=>d._poly&&d._poly.setStyle(
+    zonesVisible ? {fillOpacity:.03,weight:1,opacity:.25} : {fillOpacity:0,weight:0,opacity:0}
+  ));
+  // 선택된 구역은 구역표시 여부와 무관하게 하이라이트 (fill 낮춰서 OSM 타일이 보이게)
+  z._poly&&z._poly.setStyle({fillOpacity:.10,weight:2.5,opacity:1});
+  openPanel(id);
+  if(z.lastWorkPos)
+    toast(`📍 ${z.label}구역 — 마지막 작업 위치로 이동`);
+}
+function focusZoneById(id){focusZone(id)}
+
+/* ═══════════════════════════════════════════════════════════════
+   패널 열기 / 탭 전환
+═══════════════════════════════════════════════════════════════ */
+function openPanel(id){
+  const z=SITE_DATA.zones[id];
+  document.getElementById('pn-zone').textContent=`${z.label}구역 — ${z.company}`;
+  document.getElementById('pn-comp').textContent=`🏗 ${z.desc}`;
+  document.getElementById('panel').classList.add('open');
+  renderTab();
+  /* 타일 강제 재로드: 패널 열릴 때 지도가 회색/파란색으로 굳는 문제 방지 */
+  if(map){
+    map.invalidateSize(false);
+    /* Leaflet 타일 레이어 전체 refresh */
+    map.eachLayer(function(layer){
+      if(layer._tiles || layer.redraw) {
+        try{ if(layer.redraw) layer.redraw(); } catch(e){}
+      }
+    });
+    setTimeout(()=>{ map.invalidateSize(false); }, 350);
+  }
+}
+function closePanel(){
+  document.getElementById('panel').classList.remove('open');
+  activeZoneId=null;
+  if(zonesVisible)
+    Object.values(SITE_DATA.zones).forEach(z=>z._poly&&z._poly.setStyle({fillOpacity:.1,weight:2,opacity:1}));
+  setTimeout(()=>{ if(map) map.invalidateSize(false); }, 350);
+}
+function switchTab(tab){
+  activeTab=tab;
+  document.querySelectorAll('.pn-tab').forEach(el=>el.classList.toggle('active',el.dataset.tab===tab));
+  renderTab();
+}
+function renderTab(){
+  if(!activeZoneId)return;
+  const z=SITE_DATA.zones[activeZoneId];
+  const body=document.getElementById('pn-body');
+  switch(activeTab){
+    case 'progress': body.innerHTML=renderProgress(z); initOvChart(z); break;
+    case 'workers':  body.innerHTML=renderWorkers(z);  break;
+    case 'equip':    body.innerHTML=renderEquip(z);    break;
+    case 'hazard':   body.innerHTML=renderHazard(z);   break;
+    case 'memo':       body.innerHTML=renderMemo(z);         break;
+    case 'facilities': body.innerHTML=renderFacilities(z); break;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   탭 ① 공정 (슬라이더 시뮬레이션)
+═══════════════════════════════════════════════════════════════ */
+let _ovChart = null; // Chart.js 인스턴스 전역 관리
+
+function renderProgress(z){
+  const ov=calcOverall(z);
+  const ovc=ovColor(ov);
+  const total=totalWorkers(z);
+  const hasTasks = z.tasks && z.tasks.length > 0;
+  return `
+  <div style="margin-bottom:16px">
+    <div class="sec-lbl">📊 철거 진행 현황</div>
+    <div class="ov-card">
+      <div class="ov-canvas-wrap">
+        <canvas id="ring-canvas" width="72" height="72"></canvas>
+        <div id="ring-num" class="ov-canvas-pct" style="color:${ovc}">${ov}%</div>
+      </div>
+      <div class="ov-info">
+        <div id="ov-pct" class="ov-pct" style="color:${ovc}">${ov}% 완료</div>
+        <div class="ov-sub">인원 ${total}명 · 장비 ${z.equipment.length}대<br>위험구역 ${z.hazards.length}건</div>
+      </div>
+    </div>
+  </div>
+  <div class="sec-lbl" style="display:flex;align-items:center;justify-content:space-between">
+    <span>🔧 작업 항목별 진행률</span>
+    <button onclick="showAddTaskForm('${z.id}')"
+      style="font-size:11px;padding:3px 10px;border-radius:5px;border:1px solid rgba(56,189,248,.4);background:rgba(56,189,248,.08);color:var(--accent);cursor:pointer;transition:all .18s"
+      onmouseover="this.style.background='rgba(56,189,248,.18)'" onmouseout="this.style.background='rgba(56,189,248,.08)'">
+      ＋ 작업 추가
+    </button>
+  </div>
+  ${!hasTasks ? `
+  <div style="padding:24px 0;text-align:center;color:var(--muted);font-size:12px;border:1px dashed var(--border);border-radius:8px;margin:8px 0">
+    공종이 없습니다<br><span style="font-size:10px;opacity:.6">위 ＋ 버튼으로 추가하세요</span>
+  </div>` : ''}
+  ${z.tasks.map((t,i)=>{
+    const st=taskStatus(t.pct), sc=statusClass(t.pct);
+    const modified=t.pct!==t.origPct;
+    return `
+    <div class="task-c ${modified?'sim-mod':''}" id="task-${z.id}-${i}">
+      <div class="task-h">
+        <span class="task-n">${t.name}</span>
+        <div style="display:flex;align-items:center;gap:6px">
+          <span class="task-s ${sc}" id="task-status-${z.id}-${i}">${st}</span>
+          <button onclick="deleteTask('${z.id}',${i})" title="삭제"
+            style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:13px;padding:0 2px;line-height:1;opacity:.5;transition:opacity .15s"
+            onmouseover="this.style.opacity=1;this.style.color='var(--red)'" onmouseout="this.style.opacity=.5;this.style.color='var(--muted)'">✕</button>
+        </div>
+      </div>
+      <div class="slider-row">
+        <input type="range" class="sim-slider" min="0" max="100" value="${t.pct}"
+          style="--v:${t.pct}%"
+          oninput="onTaskSlide('${z.id}',${i},this.value)"
+          onchange="onTaskSlide('${z.id}',${i},this.value)"/>
+        <input type="number" class="pct-input" min="0" max="100" value="${t.pct}"
+          id="pct-input-${z.id}-${i}"
+          onchange="onTaskInput('${z.id}',${i},this.value)"/>
+      </div>
+      <div class="sim-label ${modified?'show':''}" id="sim-lbl-${z.id}-${i}">⚡ 원본: ${t.origPct}% → 현재: ${t.pct}%</div>
+    </div>`;
+  }).join('')}
+  <div id="add-task-form-${z.id}" style="display:none;margin-top:8px;padding:10px;border-radius:8px;background:rgba(56,189,248,.05);border:1px solid rgba(56,189,248,.2)">
+    <div style="font-size:11px;color:var(--accent);margin-bottom:6px;font-weight:600">새 작업 항목 추가</div>
+    <input id="new-task-name-${z.id}" type="text" placeholder="작업명 입력 (예: 내부 철거, 외벽 해체)"
+      style="width:100%;box-sizing:border-box;background:rgba(255,255,255,.05);border:1px solid var(--border);border-radius:6px;padding:6px 8px;color:var(--text);font-size:12px;outline:none;margin-bottom:6px"
+      onkeydown="if(event.key==='Enter')saveTaskForm('${z.id}')"
+      onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'"/>
+    <div style="display:flex;gap:6px">
+      <button onclick="saveTaskForm('${z.id}')"
+        style="flex:1;padding:6px;border-radius:6px;background:rgba(56,189,248,.15);border:1px solid rgba(56,189,248,.3);color:var(--accent);font-size:11px;cursor:pointer">
+        저장
+      </button>
+      <button onclick="hideAddTaskForm('${z.id}')"
+        style="flex:1;padding:6px;border-radius:6px;background:rgba(255,255,255,.03);border:1px solid var(--border);color:var(--muted);font-size:11px;cursor:pointer">
+        취소
+      </button>
+    </div>
+  </div>
+  ${hasTasks ? `<button onclick="resetAllTasks('${z.id}')" style="margin-top:10px;width:100%;padding:8px;border-radius:7px;background:rgba(249,115,22,.1);border:1px solid rgba(249,115,22,.3);color:var(--sim);font-size:11px;cursor:pointer;transition:all .18s" onmouseover="this.style.background='rgba(249,115,22,.2)'" onmouseout="this.style.background='rgba(249,115,22,.1)'">
+    ↺ 공정률 원본으로 초기화
+  </button>` : ''}`;
+}
+
+/* 슬라이더 이벤트 */
+function onTaskSlide(zoneId,idx,val){
+  val=Math.min(100,Math.max(0,parseInt(val)||0));
+  SITE_DATA.zones[zoneId].tasks[idx].pct=val;
+  /* 숫자 입력 동기화 */
+  const ni=document.getElementById(`pct-input-${zoneId}-${idx}`);
+  if(ni) ni.value=val;
+  /* 슬라이더 그라데이션 업데이트 */
+  const sl=document.querySelector(`#task-${zoneId}-${idx} .sim-slider`);
+  if(sl) sl.style.setProperty('--v',val+'%');
+  refreshTaskUI(zoneId,idx);
+  refreshOverallUI(zoneId);
+  refreshMapZone(zoneId);
+  syncZoneDebounced(zoneId);
+  markSim();
+}
+function onTaskInput(zoneId,idx,val){
+  val=Math.min(100,Math.max(0,parseInt(val)||0));
+  SITE_DATA.zones[zoneId].tasks[idx].pct=val;
+  const sl=document.querySelector(`#task-${zoneId}-${idx} .sim-slider`);
+  if(sl){sl.value=val;sl.style.setProperty('--v',val+'%');}
+  refreshTaskUI(zoneId,idx);
+  refreshOverallUI(zoneId);
+  refreshMapZone(zoneId);
+  syncZoneDebounced(zoneId);
+  markSim();
+}
+function refreshTaskUI(zoneId,idx){
+  const z=SITE_DATA.zones[zoneId];
+  const t=z.tasks[idx];
+  const modified=t.pct!==t.origPct;
+  const card=document.getElementById(`task-${zoneId}-${idx}`);
+  const sb=document.getElementById(`task-status-${zoneId}-${idx}`);
+  const lbl=document.getElementById(`sim-lbl-${zoneId}-${idx}`);
+  if(card){card.classList.toggle('sim-mod',modified);}
+  if(sb){
+    const st=taskStatus(t.pct),sc=statusClass(t.pct);
+    sb.textContent=st;
+    sb.className=`task-s ${sc}`;
+  }
+  if(lbl){
+    lbl.className=`sim-label ${modified?'show':''}`;
+    lbl.textContent=`⚡ 원본: ${t.origPct}% → 현재: ${t.pct}%`;
+  }
+}
+function refreshOverallUI(zoneId){
+  const z=SITE_DATA.zones[zoneId];
+  const ov=calcOverall(z);
+  const ovc=ovColor(ov);
+  const num=document.getElementById('ring-num');
+  const pct=document.getElementById('ov-pct');
+  if(num){num.textContent=ov+'%';num.style.color=ovc;}
+  if(pct){pct.textContent=ov+'% 완료';pct.style.color=ovc;}
+  if(_ovChart){
+    _ovChart.data.datasets[0].data=[ov,100-ov];
+    _ovChart.data.datasets[0].backgroundColor=[ovc,'rgba(255,255,255,.07)'];
+    _ovChart.update('active');
+  }
+}
+
+/* 공종 추가/삭제 */
+function showAddTaskForm(zoneId){
+  const f=document.getElementById(`add-task-form-${zoneId}`);
+  if(f){ f.style.display='block'; document.getElementById(`new-task-name-${zoneId}`)?.focus(); }
+}
+function hideAddTaskForm(zoneId){
+  const f=document.getElementById(`add-task-form-${zoneId}`);
+  if(f){ f.style.display='none'; const inp=document.getElementById(`new-task-name-${zoneId}`); if(inp) inp.value=''; }
+}
+function saveTaskForm(zoneId){
+  const inp=document.getElementById(`new-task-name-${zoneId}`);
+  if(!inp) return;
+  const name=(inp.value||'').trim();
+  if(!name){ inp.focus(); inp.style.borderColor='var(--red)'; setTimeout(()=>inp.style.borderColor='var(--border)',1200); return; }
+  const z=SITE_DATA.zones[zoneId];
+  const newTask={id:'t'+(Date.now()), name, pct:0, origPct:0, color:'#6b7280'};
+  z.tasks.push(newTask);
+  hideAddTaskForm(zoneId);
+  renderTab();
+  refreshMapZone(zoneId);
+  syncZone(zoneId);
+  logActivity('공종 추가', zoneId, name);
+  toast(`✅ "${name}" 공종 추가됨`);
+}
+function deleteTask(zoneId, idx){
+  const z=SITE_DATA.zones[zoneId];
+  const name=z.tasks[idx]?.name||'공종';
+  z.tasks.splice(idx, 1);
+  renderTab();
+  refreshMapZone(zoneId);
+  syncZone(zoneId);
+  toast(`🗑 "${name}" 삭제됨`);
+}
+
+function resetAllTasks(zoneId){
+  const z=SITE_DATA.zones[zoneId];
+  z.tasks.forEach(t=>{ t.pct=t.origPct; });
+  renderTab();
+  refreshMapZone(zoneId);
+  checkSimState();
+  toast('↺ 공정률 원본으로 초기화됨');
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   탭 ② 투입인원 수표
+═══════════════════════════════════════════════════════════════ */
+const WK_EMOJIS=['👷','🦺','🔧','🔨','⛏','🪚','🪛','🔩','🧱','🏗','🧰','🪜','👨‍🔬','🧑‍🏭','🚒'];
+const WK_COLORS=['#f87171','#fb923c','#fbbf24','#4ade80','#38bdf8','#a78bfa','#e2eeff','#f472b6','#34d399','#60a5fa'];
+
+function renderWorkers(z){
+  const total=totalWorkers(z);
+  const hasWorkers = z.workers && z.workers.length>0;
+  return `
+  <div class="sec-lbl" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+    <span>👷 투입 인원 수표</span>
+    <button onclick="showAddWorkerForm('${z.id}')"
+      style="font-size:11px;padding:3px 10px;border-radius:5px;border:1px solid rgba(56,189,248,.4);background:rgba(56,189,248,.08);color:var(--accent);cursor:pointer;transition:all .18s"
+      onmouseover="this.style.background='rgba(56,189,248,.18)'" onmouseout="this.style.background='rgba(56,189,248,.08)'">
+      ＋ 직종 추가
+    </button>
+  </div>
+
+  <!-- 직종 추가 폼 -->
+  <div id="add-worker-form-${z.id}" style="display:none;margin-bottom:10px;padding:10px;border-radius:8px;background:rgba(56,189,248,.04);border:1px solid rgba(56,189,248,.2)">
+    <div style="font-size:11px;color:var(--accent);margin-bottom:8px;font-weight:600">새 직종 추가</div>
+    <div style="margin-bottom:6px">
+      <div style="font-size:10px;color:var(--muted);margin-bottom:4px">이모지 선택</div>
+      <div style="display:flex;flex-wrap:wrap;gap:4px" id="wk-emoji-picker-${z.id}">
+        ${WK_EMOJIS.map((em,ei)=>`
+        <button onclick="selectWkEmoji('${z.id}',${ei})" id="wkep-${z.id}-${ei}"
+          style="width:28px;height:28px;border-radius:5px;border:1px solid var(--border);background:${ei===0?'rgba(56,189,248,.2)':'rgba(255,255,255,.03)'};cursor:pointer;font-size:14px;transition:all .15s">${em}</button>`).join('')}
+      </div>
+    </div>
+    <input id="new-worker-role-${z.id}" type="text" placeholder="직종명 (예: 철근공)"
+      style="width:100%;box-sizing:border-box;background:rgba(255,255,255,.05);border:1px solid var(--border);border-radius:6px;padding:6px 8px;color:var(--text);font-size:12px;outline:none;margin-bottom:6px"
+      onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'"
+      onkeydown="if(event.key==='Enter')saveWorkerForm('${z.id}')"/>
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+      <span style="font-size:11px;color:var(--muted);white-space:nowrap">인원 수:</span>
+      <button onclick="adjNewWorkerCount('${z.id}',-1)"
+        style="width:24px;height:24px;border-radius:4px;border:1px solid var(--border);background:rgba(255,255,255,.05);color:var(--text);cursor:pointer;font-size:14px;line-height:1;padding:0">−</button>
+      <span id="new-worker-cnt-${z.id}" style="font-size:14px;font-weight:700;color:var(--accent);min-width:24px;text-align:center">1</span>
+      <button onclick="adjNewWorkerCount('${z.id}',1)"
+        style="width:24px;height:24px;border-radius:4px;border:1px solid var(--border);background:rgba(255,255,255,.05);color:var(--text);cursor:pointer;font-size:14px;line-height:1;padding:0">＋</button>
+    </div>
+    <div style="display:flex;gap:6px">
+      <button onclick="saveWorkerForm('${z.id}')"
+        style="flex:1;padding:6px;border-radius:6px;background:rgba(56,189,248,.15);border:1px solid rgba(56,189,248,.3);color:var(--accent);font-size:11px;cursor:pointer">저장</button>
+      <button onclick="hideAddWorkerForm('${z.id}')"
+        style="flex:1;padding:6px;border-radius:6px;background:rgba(255,255,255,.03);border:1px solid var(--border);color:var(--muted);font-size:11px;cursor:pointer">취소</button>
+    </div>
+  </div>
+
+  ${!hasWorkers ? `
+  <div style="padding:24px 0;text-align:center;color:var(--muted);font-size:12px;border:1px dashed var(--border);border-radius:8px;margin:8px 0">
+    등록된 직종이 없습니다<br><span style="font-size:10px;opacity:.6">위 ＋ 버튼으로 추가하세요</span>
+  </div>` : `
+  <div class="wk-wrap">
+    <div class="wk-head"><span>직 종</span><span style="text-align:center">인 원</span><span>비 율</span><span></span></div>
+    ${z.workers.map((w,i)=>{
+      const pct=total>0?Math.round(w.count/total*100):0;
+      return `
+      <div class="wk-row">
+        <span class="wk-role">
+          <span style="font-size:14px;margin-right:4px">${w.emoji||'👷'}</span>
+          <span style="color:${w.color}">${w.role}</span>
+        </span>
+        <span style="display:flex;align-items:center;gap:4px;justify-content:center">
+          <button onclick="adjWorkerCount('${z.id}',${i},-1)"
+            style="width:20px;height:20px;border-radius:3px;border:1px solid var(--border);background:rgba(255,255,255,.04);color:var(--text);cursor:pointer;font-size:12px;line-height:1;padding:0">−</button>
+          <span id="wk-cnt-${z.id}-${i}" style="font-size:13px;font-weight:700;color:var(--accent);min-width:24px;text-align:center">${w.count}</span>
+          <button onclick="adjWorkerCount('${z.id}',${i},1)"
+            style="width:20px;height:20px;border-radius:3px;border:1px solid var(--border);background:rgba(255,255,255,.04);color:var(--text);cursor:pointer;font-size:12px;line-height:1;padding:0">＋</button>
+        </span>
+        <span class="wk-pct" id="wk-pct-${z.id}-${i}">${pct}%</span>
+        <button onclick="deleteWorker('${z.id}',${i})" title="삭제"
+          style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:12px;padding:0 2px;opacity:.5;transition:opacity .15s"
+          onmouseover="this.style.opacity=1;this.style.color='var(--red)'" onmouseout="this.style.opacity=.5;this.style.color='var(--muted)'">✕</button>
+      </div>`}).join('')}
+    <div class="wk-total-row">
+      <span>합 계</span>
+      <span id="wk-total-num" style="text-align:center">${total}명</span>
+      <span>100%</span>
+      <span></span>
+    </div>
+  </div>`}`;
+}
+const _newWorkerEmoji = {};  // {zoneId: emojiIdx}
+const _newWorkerCount = {};  // {zoneId: count}
+
+function adjWorkerCount(zoneId, idx, delta){
+  const z=SITE_DATA.zones[zoneId];
+  z.workers[idx].count=Math.max(0,(z.workers[idx].count||0)+delta);
+  refreshWorkerUI(zoneId);
+  refreshSidebarZone(zoneId);
+}
+function refreshWorkerUI(zoneId){
+  const z=SITE_DATA.zones[zoneId];
+  const total=totalWorkers(z);
+  const totEl=document.getElementById('wk-total-num');
+  if(totEl) totEl.textContent=`${total}명`;
+  z.workers.forEach((w,i)=>{
+    const pct=total>0?Math.round(w.count/total*100):0;
+    const pe=document.getElementById(`wk-pct-${zoneId}-${i}`);
+    const ce=document.getElementById(`wk-cnt-${zoneId}-${i}`);
+    if(pe) pe.textContent=pct+'%';
+    if(ce) ce.textContent=w.count;
+  });
+  document.getElementById('pn-comp') && updatePanelSub(zoneId);
+}
+function showAddWorkerForm(zoneId){
+  const f=document.getElementById(`add-worker-form-${zoneId}`);
+  if(f){ f.style.display='block'; _newWorkerEmoji[zoneId]=0; _newWorkerCount[zoneId]=1; document.getElementById(`new-worker-role-${zoneId}`)?.focus(); }
+}
+function hideAddWorkerForm(zoneId){
+  const f=document.getElementById(`add-worker-form-${zoneId}`);
+  if(f){ f.style.display='none'; const inp=document.getElementById(`new-worker-role-${zoneId}`); if(inp) inp.value=''; _newWorkerCount[zoneId]=1; }
+}
+function selectWkEmoji(zoneId, idx){
+  _newWorkerEmoji[zoneId]=idx;
+  document.querySelectorAll(`#wk-emoji-picker-${zoneId} button`).forEach((b,i)=>{
+    b.style.background=i===idx?'rgba(56,189,248,.2)':'rgba(255,255,255,.03)';
+    b.style.borderColor=i===idx?'rgba(56,189,248,.5)':'var(--border)';
+  });
+}
+function adjNewWorkerCount(zoneId, delta){
+  _newWorkerCount[zoneId]=Math.max(1,(_newWorkerCount[zoneId]||1)+delta);
+  const el=document.getElementById(`new-worker-cnt-${zoneId}`);
+  if(el) el.textContent=_newWorkerCount[zoneId];
+}
+function saveWorkerForm(zoneId){
+  const inp=document.getElementById(`new-worker-role-${zoneId}`);
+  if(!inp) return;
+  const role=(inp.value||'').trim();
+  if(!role){ inp.focus(); inp.style.borderColor='var(--red)'; setTimeout(()=>inp.style.borderColor='var(--border)',1200); return; }
+  const z=SITE_DATA.zones[zoneId];
+  const emojiIdx=_newWorkerEmoji[zoneId]||0;
+  const count=_newWorkerCount[zoneId]||1;
+  const color=WK_COLORS[z.workers.length % WK_COLORS.length];
+  z.workers.push({role, emoji:WK_EMOJIS[emojiIdx], color, count, origCount:count});
+  hideAddWorkerForm(zoneId);
+  renderTab();
+  refreshSidebarZone(zoneId);
+  syncZone(zoneId);
+  logActivity('작업자 추가', zoneId, `${role} ${count}명`);
+  toast(`✅ "${role}" ${count}명 추가됨`);
+}
+function deleteWorker(zoneId, idx){
+  const z=SITE_DATA.zones[zoneId];
+  const name=z.workers[idx]?.role||'직종';
+  z.workers.splice(idx,1);
+  renderTab();
+  refreshSidebarZone(zoneId);
+  syncZone(zoneId);
+  toast(`🗑 "${name}" 삭제됨`);
+}
+function resetWorkers(zoneId){
+  SITE_DATA.zones[zoneId].workers.forEach(w=>{ w.count=w.origCount; });
+  renderTab(); refreshSidebarZone(zoneId);
+  toast('↺ 인원 원본으로 초기화됨');
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   차량계 건설기계 타입 정의 (안전보건규칙 제38조 기준)
+═══════════════════════════════════════════════════════════════ */
+const VEHICLE_EQUIP_TYPES = [
+  {id:'tower_crane',  emoji:'🏗',  name:'타워크레인'},
+  {id:'crane_mobile', emoji:'🏗',  name:'이동식크레인'},
+  {id:'crane_truck',  emoji:'🏗',  name:'트럭크레인'},
+  {id:'excavator',    emoji:'⛏',  name:'굴삭기'},
+  {id:'bulldozer',    emoji:'🚜',  name:'불도저'},
+  {id:'loader',       emoji:'🚜',  name:'로더'},
+  {id:'grader',       emoji:'🛣️', name:'모터그레이더'},
+  {id:'scraper',      emoji:'🚜',  name:'스크레이퍼'},
+  {id:'dump_truck',   emoji:'🚛',  name:'덤프트럭'},
+  {id:'mixer_truck',  emoji:'🚚',  name:'콘크리트믹서트럭'},
+  {id:'pump_car',     emoji:'🚒',  name:'콘크리트펌프카'},
+  {id:'pile_driver',  emoji:'🔨',  name:'항타기'},
+  {id:'earth_auger',  emoji:'🌀',  name:'어스오거'},
+  {id:'drill',        emoji:'🔩',  name:'천공기'},
+  {id:'lift',         emoji:'🛗',  name:'고소작업차'},
+  {id:'forklift',     emoji:'📦',  name:'지게차'},
+  {id:'roller',       emoji:'🛞',  name:'롤러'},
+  {id:'finisher',     emoji:'🛤️', name:'아스팔트피니셔'},
+];
+
+/* ═══════════════════════════════════════════════════════════════
+   탭 ③ 장비현황
+═══════════════════════════════════════════════════════════════ */
+function renderEquip(z){
+  const statusCnt = { '운행중':0, '대기':0, '정비중':0 };
+  z.equipment.forEach(e=>statusCnt[e.status]=(statusCnt[e.status]||0)+1);
+  const hasEquip = z.equipment && z.equipment.length > 0;
+  return `
+  <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:14px">
+    ${[['운행중',statusCnt['운행중'],'var(--green)'],['대기',statusCnt['대기'],'var(--yellow)'],['정비중',statusCnt['정비중'],'var(--red)']].map(([lbl,cnt,c])=>`
+    <div style="padding:10px;border-radius:8px;background:rgba(255,255,255,.02);border:1px solid var(--border);text-align:center">
+      <div style="font-size:18px;font-weight:800;color:${c}">${cnt}</div>
+      <div style="font-size:9px;color:var(--muted);margin-top:2px">${lbl}</div>
+    </div>`).join('')}
+  </div>
+  <div class="sec-lbl" style="display:flex;align-items:center;justify-content:space-between">
+    <span>🚧 투입 장비 현황</span>
+    <button onclick="toggleEquipPicker('${z.id}')"
+      style="font-size:11px;padding:3px 10px;border-radius:5px;border:1px solid rgba(56,189,248,.4);background:rgba(56,189,248,.08);color:var(--accent);cursor:pointer;transition:all .18s"
+      onmouseover="this.style.background='rgba(56,189,248,.18)'" onmouseout="this.style.background='rgba(56,189,248,.08)'">
+      ＋ 장비 추가
+    </button>
+  </div>
+
+  <!-- 차량계 건설기계 피커 (대수 선택) -->
+  <div id="equip-picker-${z.id}" style="display:none;margin:8px 0;padding:10px;border-radius:8px;background:rgba(56,189,248,.04);border:1px solid rgba(56,189,248,.2)">
+    <div style="font-size:11px;color:var(--accent);margin-bottom:8px;font-weight:600">차량계 건설기계 — 대수 입력 후 추가</div>
+    <div style="max-height:280px;overflow-y:auto;display:flex;flex-direction:column;gap:4px">
+      ${VEHICLE_EQUIP_TYPES.map(t=>`
+      <div style="display:flex;align-items:center;gap:6px;padding:5px 6px;border-radius:6px;background:rgba(255,255,255,.02);border:1px solid var(--border)">
+        <span style="font-size:15px;width:22px;text-align:center">${t.emoji}</span>
+        <span style="flex:1;font-size:11px;color:var(--text)">${t.name}</span>
+        <button onclick="equipPickerAdj('${z.id}','${t.id}',-1)"
+          style="width:22px;height:22px;border-radius:4px;border:1px solid var(--border);background:rgba(255,255,255,.05);color:var(--text);cursor:pointer;font-size:13px;line-height:1;padding:0">−</button>
+        <span id="epq-${z.id}-${t.id}" style="width:20px;text-align:center;font-size:12px;color:var(--accent);font-weight:700">0</span>
+        <button onclick="equipPickerAdj('${z.id}','${t.id}',1)"
+          style="width:22px;height:22px;border-radius:4px;border:1px solid var(--border);background:rgba(255,255,255,.05);color:var(--text);cursor:pointer;font-size:13px;line-height:1;padding:0">＋</button>
+      </div>`).join('')}
+    </div>
+    <div style="display:flex;gap:6px;margin-top:8px">
+      <button onclick="confirmEquipAdd('${z.id}')"
+        style="flex:1;padding:7px;border-radius:6px;background:rgba(56,189,248,.15);border:1px solid rgba(56,189,248,.3);color:var(--accent);font-size:11px;font-weight:600;cursor:pointer">
+        추가
+      </button>
+      <button onclick="toggleEquipPicker('${z.id}')"
+        style="flex:1;padding:7px;border-radius:6px;background:transparent;border:1px solid var(--border);color:var(--muted);font-size:11px;cursor:pointer">
+        닫기
+      </button>
+    </div>
+  </div>
+
+  ${!hasEquip ? `
+  <div style="padding:24px 0;text-align:center;color:var(--muted);font-size:12px;border:1px dashed var(--border);border-radius:8px;margin:8px 0">
+    투입 장비가 없습니다<br><span style="font-size:10px;opacity:.6">위 ＋ 버튼으로 추가하세요</span>
+  </div>` : ''}
+
+  ${z.equipment.map((e,i)=>`
+  <div class="eq-row" id="eq-row-${z.id}-${i}">
+    <div class="eq-icon" style="background:rgba(255,255,255,.05)">${e.emoji}</div>
+    <div class="eq-info">
+      <div class="eq-name">${e.name}</div>
+      <div class="eq-type" style="font-size:10px;color:var(--muted)">${e.typeName||e.type}</div>
+    </div>
+    <div style="display:flex;align-items:center;gap:4px">
+      <select class="eq-select eq-status-${e.status}" id="eq-sel-${z.id}-${i}"
+        onchange="onEquipChange('${z.id}',${i},this.value)">
+        <option ${e.status==='운행중'?'selected':''}>운행중</option>
+        <option ${e.status==='대기'?'selected':''}>대기</option>
+        <option ${e.status==='정비중'?'selected':''}>정비중</option>
+      </select>
+      <button onclick="deleteEquipItem('${z.id}',${i})" title="삭제"
+        style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:13px;padding:0 3px;opacity:.5;transition:opacity .15s"
+        onmouseover="this.style.opacity=1;this.style.color='var(--red)'" onmouseout="this.style.opacity=.5;this.style.color='var(--muted)'">✕</button>
+    </div>
+  </div>`).join('')}`;
+}
+
+/* 장비 추가/삭제/피커 */
+const _epQty = {};  // {zoneId_typeId: count}
+function toggleEquipPicker(zoneId){
+  const p=document.getElementById(`equip-picker-${zoneId}`);
+  if(!p) return;
+  const open = p.style.display==='none';
+  p.style.display = open ? 'block' : 'none';
+  if(open){
+    // 수량 초기화
+    VEHICLE_EQUIP_TYPES.forEach(t=>{
+      _epQty[zoneId+'_'+t.id]=0;
+      const el=document.getElementById(`epq-${zoneId}-${t.id}`);
+      if(el) el.textContent='0';
+    });
+  }
+}
+function equipPickerAdj(zoneId, typeId, delta){
+  const key=zoneId+'_'+typeId;
+  _epQty[key]=Math.max(0, (_epQty[key]||0)+delta);
+  const el=document.getElementById(`epq-${zoneId}-${typeId}`);
+  if(el){ el.textContent=_epQty[key]; el.style.color=_epQty[key]>0?'var(--accent)':'var(--muted)'; }
+}
+function confirmEquipAdd(zoneId){
+  const z=SITE_DATA.zones[zoneId];
+  let added=0;
+  VEHICLE_EQUIP_TYPES.forEach(t=>{
+    const qty=_epQty[zoneId+'_'+t.id]||0;
+    if(qty<=0) return;
+    for(let i=0;i<qty;i++){
+      const sameType=z.equipment.filter(e=>e.type===t.id).length;
+      const num=sameType>0?` #${sameType+1}`:'';
+      z.equipment.push({id:'eq'+Date.now()+'_'+i,name:t.name+num,type:t.id,typeName:t.name,emoji:t.emoji,status:'대기'});
+      added++;
+    }
+  });
+  if(added===0){ toast('추가할 장비를 선택하세요 (＋ 버튼)','warn'); return; }
+  toggleEquipPicker(zoneId);
+  renderTab();
+  syncZone(zoneId);
+  logActivity('장비 추가', zoneId, `총 ${added}대`);
+  toast(`🚧 총 ${added}대 추가됨`);
+}
+function deleteEquipItem(zoneId, idx){
+  const z=SITE_DATA.zones[zoneId];
+  const name=z.equipment[idx]?.name||'장비';
+  z.equipment.splice(idx,1);
+  renderTab();
+  refreshSidebarZone(zoneId);
+  syncZone(zoneId);
+  toast(`🗑 "${name}" 삭제됨`);
+}
+
+function onEquipChange(zoneId,idx,val){
+  SITE_DATA.zones[zoneId].equipment[idx].status=val;
+  const sel=document.getElementById(`eq-sel-${zoneId}-${idx}`);
+  if(sel){ sel.className=`eq-select eq-status-${val}`; }
+  markSim();
+  toast(`⚙️ 장비 상태 변경 → ${val}`,'warn');
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   탭 ④ 위험구역
+═══════════════════════════════════════════════════════════════ */
+const HIGH_RISK_TYPES = [
+  '고소작업 (2m 이상)','굴착·토공작업','크레인·양중작업',
+  '거푸집·동바리 설치','철근·철골 조립','해체·철거작업',
+  '밀폐공간 작업','화재·폭발 위험구역','전기 위험구역','기타 고위험작업'
+];
+
+function renderHazard(z){
+  const hasHazards = z.hazards && z.hazards.length>0;
+  return `
+  <div class="sec-lbl" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+    <span>⚠️ 고위험작업구간 관리</span>
+    <button onclick="toggleHazardForm('${z.id}')"
+      style="font-size:11px;padding:3px 10px;border-radius:5px;border:1px solid rgba(248,113,113,.4);background:rgba(248,113,113,.08);color:var(--red);cursor:pointer;transition:all .18s"
+      onmouseover="this.style.background='rgba(248,113,113,.18)'" onmouseout="this.style.background='rgba(248,113,113,.08)'">
+      ＋ 구간 등록
+    </button>
+  </div>
+
+  <!-- 고위험작업구간 안내 -->
+  <div style="padding:8px 10px;border-radius:7px;background:rgba(248,113,113,.05);border:1px solid rgba(248,113,113,.15);font-size:10px;color:var(--muted);line-height:1.7;margin-bottom:8px">
+    <span style="color:var(--red);font-weight:600">⚠ 고위험작업 기재 안내</span><br>
+    산업안전보건법 제38·39조에 따라 아래 작업은 <strong style="color:var(--text)">반드시 위험성평가</strong> 후 등록하십시오.<br>
+    <span style="opacity:.7">고소작업·굴착·크레인·밀폐공간·화재폭발·전기위험 등</span>
+  </div>
+
+  <!-- 등록 폼 -->
+  <div id="hazard-form-${z.id}" style="display:none;margin-bottom:10px;padding:10px;border-radius:8px;background:rgba(248,113,113,.05);border:1px solid rgba(248,113,113,.2)">
+    <div style="font-size:11px;color:var(--red);margin-bottom:8px;font-weight:600">고위험작업구간 등록</div>
+    <input id="hz-name-${z.id}" type="text" placeholder="구간명 (예: B구역 3층 고소작업)"
+      style="width:100%;box-sizing:border-box;background:rgba(255,255,255,.05);border:1px solid var(--border);border-radius:6px;padding:6px 8px;color:var(--text);font-size:12px;outline:none;margin-bottom:6px"
+      onfocus="this.style.borderColor='var(--red)'" onblur="this.style.borderColor='var(--border)'"/>
+    <select id="hz-type-${z.id}"
+      style="width:100%;background:rgba(255,255,255,.05);border:1px solid var(--border);border-radius:6px;padding:6px 8px;color:var(--text);font-size:12px;outline:none;margin-bottom:6px;cursor:pointer">
+      ${HIGH_RISK_TYPES.map(t=>`<option value="${t}">${t}</option>`).join('')}
+    </select>
+    <input id="hz-detail-${z.id}" type="text" placeholder="세부 내용 (선택)"
+      style="width:100%;box-sizing:border-box;background:rgba(255,255,255,.05);border:1px solid var(--border);border-radius:6px;padding:6px 8px;color:var(--text);font-size:12px;outline:none;margin-bottom:6px"
+      onfocus="this.style.borderColor='var(--red)'" onblur="this.style.borderColor='var(--border)'"/>
+    <div style="display:flex;gap:6px">
+      <button onclick="saveHazardForm('${z.id}')"
+        style="flex:1;padding:6px;border-radius:6px;background:rgba(248,113,113,.15);border:1px solid rgba(248,113,113,.3);color:var(--red);font-size:11px;cursor:pointer">등록</button>
+      <button onclick="toggleHazardForm('${z.id}')"
+        style="flex:1;padding:6px;border-radius:6px;background:rgba(255,255,255,.03);border:1px solid var(--border);color:var(--muted);font-size:11px;cursor:pointer">취소</button>
+    </div>
+  </div>
+
+  ${!hasHazards ? `
+  <div style="padding:20px 0;text-align:center;color:var(--muted);font-size:12px;border:1px dashed var(--border);border-radius:8px">
+    등록된 고위험작업구간이 없습니다<br><span style="font-size:10px;opacity:.6">위 ＋ 버튼으로 등록하세요</span>
+  </div>` : ''}
+
+  ${z.hazards.map((h,i)=>`
+  <div class="hz-row ${h.visible?'active-hz':''}" id="hz-row-${z.id}-${i}">
+    <div class="hz-dot" style="background:${h.color||'#ef4444'};color:${h.color||'#ef4444'}"></div>
+    <div class="hz-info" style="flex:1">
+      <div class="hz-name">${h.name}</div>
+      <div class="hz-detail">${h.detail||h.type||''}</div>
+    </div>
+    <div style="display:flex;align-items:center;gap:6px">
+      <div class="hz-sw" onclick="onHazardToggle('${z.id}',${i})">
+        <div class="sw ${h.visible?'on':''}" id="hz-sw-${z.id}-${i}"></div>
+      </div>
+      <button onclick="deleteHazard('${z.id}',${i})" title="삭제"
+        style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:13px;padding:0 3px;opacity:.5;transition:opacity .15s"
+        onmouseover="this.style.opacity=1;this.style.color='var(--red)'" onmouseout="this.style.opacity=.5;this.style.color='var(--muted)'">✕</button>
+    </div>
+  </div>`).join('')}`;
+}
+/* 고위험작업구간 폼/추가/삭제 */
+function toggleHazardForm(zoneId){
+  const f=document.getElementById(`hazard-form-${zoneId}`);
+  if(f) f.style.display = f.style.display==='none' ? 'block' : 'none';
+}
+function saveHazardForm(zoneId){
+  const name=(document.getElementById(`hz-name-${zoneId}`)?.value||'').trim();
+  const type=document.getElementById(`hz-type-${zoneId}`)?.value||'';
+  const detail=(document.getElementById(`hz-detail-${zoneId}`)?.value||'').trim();
+  if(!name){
+    const el=document.getElementById(`hz-name-${zoneId}`);
+    if(el){el.style.borderColor='var(--red)';el.focus();setTimeout(()=>el.style.borderColor='var(--border)',1200);}
+    return;
+  }
+  const z=SITE_DATA.zones[zoneId];
+  const hz={id:'hz'+Date.now(),name,type,detail:detail||type,color:'#ef4444',visible:false};
+  z.hazards.push(hz);
+  // 범례 highrisk 마커에도 추가 (지도 클릭으로 위치 지정 가능)
+  const cat=SITE_DATA.legend.find(c=>c.id==='highrisk');
+  if(cat){ cat.markers.push({pos:[z.zoomTarget[0], z.zoomTarget[1]], label:name, id:'hr'+Date.now()}); rebuildLegendCat('highrisk'); syncLegend(); }
+  renderTab();
+  syncZone(zoneId);
+  logActivity('위험구역 등록', zoneId, name);
+  toast(`⚠️ "${name}" 등록됨`);
+}
+function deleteHazard(zoneId, idx){
+  const z=SITE_DATA.zones[zoneId];
+  const name=z.hazards[idx]?.name||'구간';
+  z.hazards.splice(idx,1);
+  renderTab();
+  syncZone(zoneId);
+  toast(`🗑 "${name}" 삭제됨`);
+}
+function rebuildLegendCat(catId){
+  const cat=SITE_DATA.legend.find(c=>c.id===catId);
+  if(!cat||!mGroups[catId]) return;
+  map.removeLayer(mGroups[catId]);
+  mGroups[catId]=buildLegendLayer(cat);
+  if(cat.visible) mGroups[catId].addTo(map);
+}
+
+function onHazardToggle(zoneId,idx){
+  const h=SITE_DATA.zones[zoneId].hazards[idx];
+  h.visible=!h.visible;
+  toggleHazardOnMap(zoneId,h.id,h.visible);
+  const sw=document.getElementById(`hz-sw-${zoneId}-${idx}`);
+  const row=document.getElementById(`hz-row-${zoneId}-${idx}`);
+  if(sw) sw.classList.toggle('on',h.visible);
+  if(row) row.classList.toggle('active-hz',h.visible);
+  toast(`⚠️ ${h.name} ${h.visible?'지도에 표시':'지도에서 숨김'}`);
+}
+
+
+/* ═══════════════════════════════════════════════════════════════
+   포인트-인-폴리곤 (Ray Casting)
+═══════════════════════════════════════════════════════════════ */
+function pointInPolygon(pt, poly){
+  /* pt: [lat,lng],  poly: [[lat,lng],...] */
+  const [py,px]=pt;
+  let inside=false;
+  for(let i=0,j=poly.length-1;i<poly.length;j=i++){
+    const [iy,ix]=poly[i], [jy,jx]=poly[j];
+    if(((iy>py)!==(jy>py)) && (px < (jx-ix)*(py-iy)/(jy-iy)+ix))
+      inside=!inside;
+  }
+  return inside;
+}
+
+/* 특정 구역 내 범례 마커 요약 반환
+   반환: [{cat, markers:[...]}]  (마커가 1개 이상인 카테고리만) */
+function getZoneLegendSummary(zoneId){
+  const z=SITE_DATA.zones[zoneId];
+  if(!z||!z.polygon) return [];
+  const result=[];
+  SITE_DATA.legend.forEach(cat=>{
+    const inside=cat.markers.filter(m=>pointInPolygon(m.pos, z.polygon));
+    if(inside.length>0) result.push({cat, markers:inside});
+  });
+  // drawData (보행자도로/차량이동통로) — 폴리라인 포함 여부는 첫 점 기준 체크
+  const drawSummary=[];
+  Object.values(drawData).forEach(d=>{
+    const linesIn=d.lines.filter(pts=>pts.length>0 && pointInPolygon(pts[0], z.polygon));
+    if(linesIn.length>0) drawSummary.push({label:d.label, emoji: d.label==='보행자도로'?'🚶':'🚗', count:linesIn.length, color:d.color});
+  });
+  return {markers:result, routes:drawSummary};
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   탭 ⑥ 시설물 현황
+═══════════════════════════════════════════════════════════════ */
+function renderFacilities(z){
+  const summary=getZoneLegendSummary(z.id);
+  const hasMarkers = summary.markers && summary.markers.length>0;
+  const hasRoutes  = summary.routes  && summary.routes.length>0;
+  const hasAny = hasMarkers || hasRoutes;
+
+  const markerRows = hasMarkers ? summary.markers.map(({cat,markers})=>`
+  <div style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:7px;background:rgba(255,255,255,.02);border:1px solid var(--border);margin-bottom:5px">
+    <div style="width:32px;height:32px;border-radius:7px;background:${cat.bg};border:1px solid ${cat.color}44;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0">${cat.emoji}</div>
+    <div style="flex:1;min-width:0">
+      <div style="font-size:12px;font-weight:600;color:var(--text)">${cat.label}</div>
+      <div style="font-size:10px;color:var(--muted);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
+        ${markers.map(m=>m.label||'마커').join(' · ')}
+      </div>
+    </div>
+    <div style="font-size:18px;font-weight:800;color:${cat.color};min-width:20px;text-align:right">${markers.length}</div>
+  </div>`).join('') : '';
+
+  const routeRows = hasRoutes ? summary.routes.map(r=>`
+  <div style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:7px;background:rgba(255,255,255,.02);border:1px solid var(--border);margin-bottom:5px">
+    <div style="width:32px;height:32px;border-radius:7px;background:${r.color}22;border:1px solid ${r.color}44;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0">${r.emoji}</div>
+    <div style="flex:1">
+      <div style="font-size:12px;font-weight:600;color:var(--text)">${r.label}</div>
+      <div style="font-size:10px;color:var(--muted);margin-top:2px">경로 ${r.count}개</div>
+    </div>
+    <div style="font-size:18px;font-weight:800;color:${r.color};min-width:20px;text-align:right">${r.count}</div>
+  </div>`).join('') : '';
+
+  return `
+  <div class="sec-lbl" style="margin-bottom:10px">🏷 이 구역의 시설물 현황</div>
+
+  ${!hasAny ? `
+  <div style="padding:28px 0;text-align:center;color:var(--muted);font-size:12px;border:1px dashed var(--border);border-radius:8px">
+    이 구역에 배치된 시설물이 없습니다<br>
+    <span style="font-size:10px;opacity:.6">왼쪽 범례에서 ＋ 버튼으로 마커를 추가하세요</span>
+  </div>` : `
+  ${hasMarkers ? `
+  <div style="font-size:10px;color:var(--muted);margin-bottom:6px;letter-spacing:.3px">📍 시설물 마커</div>
+  ${markerRows}` : ''}
+  ${hasRoutes ? `
+  <div style="font-size:10px;color:var(--muted);margin-bottom:6px;margin-top:${hasMarkers?'10px':'0'};letter-spacing:.3px">🛣 이동 경로</div>
+  ${routeRows}` : ''}
+  <div style="margin-top:10px;padding:8px 10px;border-radius:7px;background:rgba(56,189,248,.04);border:1px solid rgba(56,189,248,.12);font-size:11px;color:var(--muted)">
+    합계 <strong style="color:var(--accent)">${(summary.markers||[]).reduce((s,x)=>s+x.markers.length,0) + (summary.routes||[]).reduce((s,r)=>s+r.count,0)}</strong>개 항목
+  </div>`}`;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   탭 ⑤ 메모
+═══════════════════════════════════════════════════════════════ */
+function renderMemo(z){
+  const m=z.memo;
+  const pClass={urgent:'urgent',important:'important',normal:'normal'}[m.priority]||'normal';
+  const pLabel={urgent:'🔴 긴급',important:'🟡 중요',normal:'🟢 보통'}[m.priority]||'보통';
+  return `
+  <div class="sec-lbl">📝 오늘의 현장 메모</div>
+  <div class="memo-meta">
+    <span class="memo-tag ${pClass}">${pLabel}</span>
+    <span class="memo-author">✍ ${m.author}</span>
+    <span class="memo-date">${m.date}</span>
+  </div>
+  <select class="priority-sel" onchange="onPriorityChange('${z.id}',this.value)">
+    <option value="urgent"   ${m.priority==='urgent'?  'selected':''}>🔴 긴급</option>
+    <option value="important"${m.priority==='important'?'selected':''}>🟡 중요</option>
+    <option value="normal"   ${m.priority==='normal'?  'selected':''}>🟢 보통</option>
+  </select>
+  <textarea class="memo-ta" id="memo-ta-${z.id}" style="margin-top:10px"
+    oninput="onMemoChange('${z.id}',this.value)">${m.content}</textarea>
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px">
+    <div style="font-size:10px;color:var(--muted)" id="memo-char-${z.id}">${m.content.length}자</div>
+    <button onclick="saveMemoSnapshot('${z.id}')" style="padding:5px 14px;border-radius:6px;background:rgba(56,189,248,.1);border:1px solid rgba(56,189,248,.25);color:var(--accent);font-size:11px;cursor:pointer">
+      💾 스냅샷 저장
+    </button>
+  </div>`;
+}
+function onMemoChange(zoneId,val){
+  SITE_DATA.zones[zoneId].memo.content=val;
+  const ce=document.getElementById(`memo-char-${zoneId}`);
+  if(ce) ce.textContent=val.length+'자';
+  syncZoneDebounced(zoneId);
+  markSim();
+}
+function onPriorityChange(zoneId,val){
+  SITE_DATA.zones[zoneId].memo.priority=val;
+  syncZone(zoneId);
+  toast(`📝 우선순위 변경 → ${val}`,'');
+}
+function saveMemoSnapshot(zoneId){
+  const z=SITE_DATA.zones[zoneId];
+  const snap=JSON.stringify({zone:zoneId,memo:z.memo,time:new Date().toISOString()},null,2);
+  console.log('[MEMO SNAPSHOT]',snap);
+  toast('💾 메모 스냅샷 콘솔에 저장됨');
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   지도 실시간 반영
+═══════════════════════════════════════════════════════════════ */
+function refreshMapZone(zoneId){
+  const z=SITE_DATA.zones[zoneId];
+  const ov=calcOverall(z);
+  /* 공정률에 따라 폴리곤 색상 변화 */
+  const fc=ov>=70?'#4ade80':ov>=40?'#fbbf24':'#f87171';
+  if(z._poly){
+    z._poly.setStyle({color:fc,fillColor:fc,fillOpacity:.22,weight:3,opacity:1});
+    /* 0.6초 후 다시 원상 (호버 상태 유지 느낌) */
+    clearTimeout(z._polyTimer);
+    z._polyTimer=setTimeout(()=>{
+      if(activeZoneId===zoneId){
+        z._poly.setStyle({color:fc,fillColor:fc,fillOpacity:.22,weight:3,opacity:1});
+      } else {
+        z._poly.setStyle({color:fc,fillColor:fc,fillOpacity:.1,weight:2,opacity:1});
+      }
+    },600);
+  }
+  refreshSidebarZone(zoneId);
+}
+function refreshSidebarZone(zoneId){
+  const z=SITE_DATA.zones[zoneId];
+  const ov=calcOverall(z);
+  const fc=ov>=70?'var(--green)':ov>=40?'var(--yellow)':'var(--red)';
+  const fillEl=document.getElementById(`sb-fill-${zoneId}`);
+  const pctEl=document.getElementById(`sb-pct-${zoneId}`);
+  if(fillEl){fillEl.style.width=ov+'%';fillEl.style.background=fc;}
+  if(pctEl){pctEl.textContent=ov+'%';pctEl.style.color=fc;}
+  updateSidebarTotalWorkers();
+  updateAllZoneLegendBadges();
+}
+function updatePanelSub(zoneId){
+  const z=SITE_DATA.zones[zoneId];
+  document.getElementById('pn-comp').textContent=`🏗 ${z.desc}`;
+}
+function updateSidebarTotalWorkers(){
+  const total=Object.values(SITE_DATA.zones).reduce((s,z)=>s+totalWorkers(z),0);
+  const el=document.getElementById('total-workers-pill');
+  if(el) el.textContent=`전체 ${total}명`;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   시뮬레이션 상태 관리
+═══════════════════════════════════════════════════════════════ */
+function markSim(){
+  simModified=true;
+  document.getElementById('sim-badge').classList.add('show');
+}
+function checkSimState(){
+  /* 모든 값이 원본과 동일한지 확인 */
+  let mod=false;
+  Object.values(SITE_DATA.zones).forEach(z=>{
+    z.tasks.forEach(t=>{if(t.pct!==t.origPct)mod=true;});
+    z.workers.forEach(w=>{if(w.count!==w.origCount)mod=true;});
+  });
+  simModified=mod;
+  document.getElementById('sim-badge').classList.toggle('show',mod);
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   사이드바 렌더링
+═══════════════════════════════════════════════════════════════ */
+function renderSidebar(){
+  /* 범례 — 차량계 건설기계 토글 행 (상단 고정) + 기존 범례 */
+  const eqCount = Object.keys(eqMarkers).length;
+  const eqRow = `
+    <div class="lg-row ${eqLayerVisible?'on':'off'}" onclick="toggleEqLayer()">
+      <div class="lg-ico" style="background:rgba(251,191,36,.12);border:1px solid rgba(251,191,36,.3)">🏗</div>
+      <span class="lg-lbl">차량계 건설기계</span>
+      <span style="font-size:10px;color:var(--muted)">${eqCount}대</span>
+      <div class="sw ${eqLayerVisible?'on':''}"></div>
+    </div>`;
+  document.getElementById('legend-list').innerHTML=
+    eqRow +
+    SITE_DATA.legend.map(cat=>{
+      if(DRAW_TYPES.includes(cat.id)){
+        const d=drawData[cat.id];
+        const isActive=drawMode&&drawMode.id===cat.id;
+        return `
+    <div class="lg-row ${d.visible?'on':'off'}">
+      <div class="lg-ico" style="background:${cat.bg};border:1px solid ${cat.color}30;cursor:pointer" onclick="toggleLegend('${cat.id}')">${cat.emoji}</div>
+      <span class="lg-lbl" style="cursor:pointer" onclick="toggleLegend('${cat.id}')">${cat.label}</span>
+      <span style="font-size:10px;color:var(--muted)">${d.lines.length}선</span>
+      ${cat.isDrawType
+        ? `<button class="draw-btn ${drawMode?.id===cat.isDrawType?'active':''}" onclick="startDraw('${cat.isDrawType}')" title="영역 그리기">✏️</button>`
+        : `<button class="draw-btn ${isActive?'active':''}" onclick="startDraw('${cat.id}')" title="경로 그리기">✏️</button>`
+      }
+      <div class="sw ${d.visible?'on':''}" style="cursor:pointer" onclick="toggleLegend('${cat.id}')"></div>
+    </div>`;
+      }
+      const isPlacing=legendPlaceMode&&legendPlaceMode.catId===cat.id;
+      return `
+    <div class="lg-row ${cat.visible?'on':'off'}">
+      <div class="lg-ico" style="background:${cat.bg};border:1px solid ${cat.color}30;cursor:pointer" onclick="toggleLegend('${cat.id}')">${cat.emoji}</div>
+      <span class="lg-lbl" style="cursor:pointer" onclick="toggleLegend('${cat.id}')">${cat.label}</span>
+      <span style="font-size:10px;color:var(--muted)">${cat.markers.length}</span>
+      <button class="add-mk-btn ${isPlacing?'active':''}" onclick="startLegendPlace('${cat.id}')" title="마커 추가">＋</button>
+      <div class="sw ${cat.visible?'on':''}" style="cursor:pointer" onclick="toggleLegend('${cat.id}')"></div>
+    </div>`;
+    }).join('');
+  /* 구역 카드 */
+  document.getElementById('zone-list').innerHTML=
+    Object.values(SITE_DATA.zones).map(z=>{
+      const ov=calcOverall(z);
+      const fc=ov>=70?'var(--green)':ov>=40?'var(--yellow)':'var(--red)';
+      return `
+      <div class="zn-card ${activeZoneId===z.id?'selected':''}" onclick="focusZoneById('${z.id}')">
+        <div class="zn-badge" style="background:${z.color}18;border:1px solid ${z.color}44;color:${z.color}">${z.label}</div>
+        <div class="zn-info">
+          <div class="zn-name">${z.company}</div>
+          <div class="zn-desc" style="display:flex;align-items:center;gap:4px">
+            <span>${z.desc}</span>
+            <span id="lw-badge-${z.id}" onclick="event.stopPropagation();resetZoneLastPos('${z.id}')"
+              style="display:${z.lastWorkPos?'flex':'none'};align-items:center;gap:2px;
+                     padding:1px 5px;border-radius:4px;background:rgba(56,189,248,.12);
+                     border:1px solid rgba(56,189,248,.3);color:var(--accent);
+                     font-size:9px;white-space:nowrap;cursor:pointer;flex-shrink:0"
+              title="마지막 작업 위치 저장됨 — 클릭하여 초기화">📍저장됨</span>
+          </div>
+          <div class="zn-bar-bg">
+            <div class="zn-bar-fill" id="sb-fill-${z.id}" style="width:${ov}%;background:${fc}"></div>
+          </div>
+          <div id="sb-legend-${z.id}" style="display:flex;flex-wrap:wrap;gap:3px;margin-top:5px"></div>
+        </div>
+        <div class="zn-pct" id="sb-pct-${z.id}" style="color:${fc}">${ov}%</div>
+      </div>`;
+    }).join('');
+  updateSidebarTotalWorkers();
+}
+
+
+/* 사이드바 구역 카드 — 범례 아이콘 뱃지 업데이트 */
+function updateAllZoneLegendBadges(){
+  Object.values(SITE_DATA.zones).forEach(z=>{
+    const el=document.getElementById(`sb-legend-${z.id}`);
+    if(!el) return;
+    const summary=getZoneLegendSummary(z.id);
+    const items=[
+      ...(summary.markers||[]).map(({cat,markers})=>
+        `<span title="${cat.label} ${markers.length}개" style="display:inline-flex;align-items:center;gap:2px;padding:1px 5px;border-radius:4px;background:${cat.bg};border:1px solid ${cat.color}33;font-size:9px;color:${cat.color}">
+          ${cat.emoji} <span style="font-weight:600">${markers.length}</span>
+        </span>`),
+      ...(summary.routes||[]).map(r=>
+        `<span title="${r.label} ${r.count}개" style="display:inline-flex;align-items:center;gap:2px;padding:1px 5px;border-radius:4px;background:${r.color}18;border:1px solid ${r.color}33;font-size:9px;color:${r.color}">
+          ${r.emoji} <span style="font-weight:600">${r.count}</span>
+        </span>`)
+    ];
+    el.innerHTML = items.length>0 ? items.join('') :
+      '<span style="font-size:9px;color:var(--muted);opacity:.5">시설물 없음</span>';
+  });
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   사이드바 토글
+═══════════════════════════════════════════════════════════════ */
+function toggleSB(){
+  sbOpen=!sbOpen;
+  document.getElementById('sidebar').style.transform=sbOpen?'translateX(0)':'translateX(-252px)';
+  const btn=document.getElementById('sb-btn');
+  btn.style.left=sbOpen?'252px':'0';
+  btn.textContent=sbOpen?'❮':'❯';
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   좌표 픽커
+═══════════════════════════════════════════════════════════════ */
+/* ══════════════════════════════════════════
+   GPS 추적 & 보정
+══════════════════════════════════════════ */
+let gpsWatchId   = null;
+let gpsMarker    = null;
+let gpsAccCircle = null;
+let gpsActive    = false;
+
+/* GPS 마커 갱신 — OSM 실좌표 직접 사용 (보정 불필요) */
+function updateGPSMarker(lat, lng, accuracy){
+  if(gpsMarker)   { gpsMarker.remove();    gpsMarker=null; }
+  if(gpsAccCircle){ gpsAccCircle.remove(); gpsAccCircle=null; }
+
+  const icon = L.divIcon({
+    className:'', iconSize:[14,14], iconAnchor:[7,7],
+    html:`<div class="gps-dot" title="내 위치"></div>`
+  });
+  gpsMarker = L.marker([lat, lng], {icon, zIndexOffset:9000}).addTo(map);
+  gpsMarker.bindTooltip('📍 내 위치', {permanent:false, direction:'top', offset:[0,-8]});
+
+  /* 정확도 원 (미터 단위 — OSM에서 실제 크기로 자동 표시) */
+  if(accuracy){
+    gpsAccCircle = L.circle([lat, lng], {
+      radius: accuracy, className:'gps-accuracy',
+      color:'rgba(59,130,246,.5)', fillColor:'rgba(59,130,246,.07)',
+      weight:1.5, fillOpacity:1
+    }).addTo(map);
+  }
+
+  /* 사이드바 정보 갱신 */
+  document.getElementById('gps-info').style.display = 'block';
+  document.getElementById('gps-coords-display').textContent =
+    `위도 ${lat.toFixed(6)}  경도 ${lng.toFixed(6)}`;
+  document.getElementById('gps-accuracy-display').textContent =
+    `정확도: ±${Math.round(accuracy||0)}m`;
+
+  /* 현재 구역 감지 */
+  const zoneLabel = detectZoneByCoord(mapY, mapX);
+  document.getElementById('gps-zone-display').textContent =
+    zoneLabel ? `📍 현재 위치: ${zoneLabel}` : '';
+}
+
+/* 포인트-인-폴리곤으로 구역 감지 */
+function detectZoneByCoord(mapY, mapX){
+  for(const z of Object.values(SITE_DATA.zones)){
+    if(!z.polygon || z.polygon.length < 3) continue;
+    if(pointInPolygon([mapY, mapX], z.polygon)) return z.name;
+  }
+  return null;
+}
+function pointInPolygon(pt, poly){
+  let inside = false;
+  const [y, x] = pt;
+  for(let i=0, j=poly.length-1; i<poly.length; j=i++){
+    const [yi,xi] = poly[i], [yj,xj] = poly[j];
+    if(((yi>y)!==(yj>y)) && (x < (xj-xi)*(y-yi)/(yj-yi)+xi)) inside=!inside;
+  }
+  return inside;
+}
+
+/* GPS 추적 켜기/끄기 */
+function toggleGPS(){
+  if(!navigator.geolocation){
+    toast('⚠️ 이 기기에서 GPS를 지원하지 않습니다'); return;
+  }
+  if(gpsActive){
+    /* 끄기 */
+    if(gpsWatchId !== null){ navigator.geolocation.clearWatch(gpsWatchId); gpsWatchId=null; }
+    if(gpsMarker)  { gpsMarker.remove();    gpsMarker=null; }
+    if(gpsAccCircle){ gpsAccCircle.remove(); gpsAccCircle=null; }
+    gpsActive = false;
+    document.getElementById('gps-toggle-btn').textContent = '🛰 GPS 추적 시작';
+    document.getElementById('gps-toggle-btn').style.background = 'rgba(59,130,246,.08)';
+    document.getElementById('gps-status-badge').className = 'gps-status-badge off';
+    document.getElementById('gps-status-badge').textContent = '● 꺼짐';
+    document.getElementById('gps-info').style.display = 'none';
+    toast('GPS 추적 중지됨');
+  } else {
+    /* 켜기 */
+    document.getElementById('gps-toggle-btn').textContent = '⏳ GPS 연결 중...';
+    gpsWatchId = navigator.geolocation.watchPosition(
+      (pos)=>{
+        gpsActive = true;
+        document.getElementById('gps-toggle-btn').textContent = '🛑 GPS 추적 중지';
+        document.getElementById('gps-toggle-btn').style.background = 'rgba(239,68,68,.12)';
+        document.getElementById('gps-status-badge').className = 'gps-status-badge on';
+        document.getElementById('gps-status-badge').textContent = '● 추적 중';
+        updateGPSMarker(pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy);
+      },
+      (err)=>{
+        const msgs = {1:'위치 권한이 거부되었습니다',2:'위치를 가져올 수 없습니다',3:'시간 초과'};
+        toast('⚠️ GPS 오류: ' + (msgs[err.code]||err.message));
+        document.getElementById('gps-toggle-btn').textContent = '🛰 GPS 추적 시작';
+        document.getElementById('gps-status-badge').className = 'gps-status-badge err';
+        document.getElementById('gps-status-badge').textContent = '● 오류';
+        gpsActive = false;
+      },
+      { enableHighAccuracy:true, maximumAge:3000, timeout:15000 }
+    );
+  }
+}
+
+
+
+
+
+
+/* ══════════════════════════════════════════
+   지적도 PDF 내보내기
+══════════════════════════════════════════ */
+async function exportMapPDF(){
+  const btn = document.getElementById('pdf-export-btn');
+  btn.textContent = '⏳ 생성 중...';
+  btn.disabled = true;
+
+  try {
+    const {fullBounds} = SITE_DATA.map;
+    // 1. 전체 지도 뷰로 이동
+    const savedCenter = map.getCenter();
+    const savedZoom   = map.getZoom();
+    map.fitBounds(fullBounds, {animate:false, padding:[0,0]});
+    await new Promise(r => setTimeout(r, 600)); // 렌더링 대기
+
+    // 2. 지도 컨테이너 캡처
+    const mapEl = document.getElementById('map');
+    const canvas = await html2canvas(mapEl, {
+      useCORS: true,
+      allowTaint: true,
+      scale: 2,
+      backgroundColor: '#f0f4f8',
+      logging: false
+    });
+
+    // 3. PDF 생성 (A3 가로)
+    const { jsPDF } = window.jspdf;
+    const mapW = canvas.width;
+    const mapH = canvas.height;
+    const isLandscape = mapW > mapH;
+    const pdf = new jsPDF({ orientation: isLandscape ? 'landscape' : 'portrait', unit: 'mm', format: 'a3' });
+
+    const pageW = pdf.internal.pageSize.getWidth();
+    const pageH = pdf.internal.pageSize.getHeight();
+    const margin = 12;
+    const headerH = 16;
+    const footerH = 10;
+    const imgAreaW = pageW - margin * 2;
+    const imgAreaH = pageH - margin * 2 - headerH - footerH;
+
+    // 이미지 비율 유지하며 맞추기
+    const ratio = Math.min(imgAreaW / mapW, imgAreaH / mapH);
+    const drawW = mapW * ratio;
+    const drawH = mapH * ratio;
+    const imgX = margin + (imgAreaW - drawW) / 2;
+    const imgY = margin + headerH;
+
+    // 헤더
+    pdf.setFillColor(15, 23, 42);
+    pdf.rect(0, 0, pageW, margin + headerH - 2, 'F');
+    pdf.setTextColor(255,255,255);
+    pdf.setFontSize(13);
+    pdf.setFont('helvetica','bold');
+    pdf.text('한남3구역 현장 지적도', margin, margin + 9);
+
+    // 날짜/시간
+    const now = new Date();
+    const dateStr = `${now.getFullYear()}.${String(now.getMonth()+1).padStart(2,'0')}.${String(now.getDate()).padStart(2,'0')}  ${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
+    pdf.setFontSize(8);
+    pdf.setFont('helvetica','normal');
+    pdf.setTextColor(148,163,184);
+    pdf.text(dateStr, pageW - margin, margin + 9, {align:'right'});
+
+    // 지도 이미지 삽입
+    const imgData = canvas.toDataURL('image/png');
+    pdf.addImage(imgData, 'PNG', imgX, imgY, drawW, drawH);
+
+    // 테두리
+    pdf.setDrawColor(56,189,248);
+    pdf.setLineWidth(0.4);
+    pdf.rect(imgX, imgY, drawW, drawH);
+
+    // 범례 정보 (푸터)
+    const zones = Object.values(SITE_DATA.zones);
+    const totalWorkers = zones.reduce((s,z)=>s+(z.workers||0),0);
+    const totalEquip   = zones.reduce((s,z)=>s+(z.equipment?.length||0),0);
+    pdf.setFontSize(7.5);
+    pdf.setTextColor(100,116,139);
+    pdf.setFont('helvetica','normal');
+    const footerY = imgY + drawH + 5;
+    pdf.text(`총 작업인원: ${totalWorkers}명  |  장비: ${totalEquip}대  |  구역: ${zones.length}개`, margin, footerY);
+    pdf.text('한남3구역 디지털 트윈 대시보드', pageW - margin, footerY, {align:'right'});
+
+    // 저장
+    const fileName = `한남3구역_지적도_${now.getFullYear()}${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}_${String(now.getHours()).padStart(2,'0')}${String(now.getMinutes()).padStart(2,'0')}.pdf`;
+    pdf.save(fileName);
+
+    // 원래 뷰로 복귀
+    map.setView(savedCenter, savedZoom, {animate:false});
+    toast('📄 PDF 저장 완료!');
+  } catch(e) {
+    console.error(e);
+    toast('⚠️ PDF 생성 실패: ' + e.message);
+  } finally {
+    btn.textContent = '📄 전체 지적도 PDF 저장';
+    btn.disabled = false;
+  }
+}
+
+function toggleCoord(){
+  coordMode=!coordMode;
+  document.getElementById('coord-bar').style.display=coordMode?'flex':'none';
+  const btn=document.getElementById('coord-btn');
+  btn.textContent=coordMode?'좌표 클릭 모드 끄기':'좌표 클릭 모드 켜기';
+  btn.classList.toggle('active',coordMode);
+  map.getContainer().style.cursor=coordMode?'crosshair':'';
+  if(coordMode) toast('📍 좌표 클릭 모드 — 지도를 클릭하세요');
+}
+function onMapClick(e){
+  /* 장비 배치 모드 우선 */
+  if(equipMode){
+    placeEquipment(e.latlng);
+    return;
+  }
+  /* 드로잉 모드 */
+  if(drawMode){
+    addDrawPoint(e.latlng);
+    return;
+  }
+  /* 범례 마커 배치 모드 */
+  if(legendPlaceMode){
+    placeLegendMarker(e.latlng);
+    return;
+  }
+  if(!coordMode)return;
+  const y=Math.round(e.latlng.lat), x=Math.round(e.latlng.lng);
+  lastXY=`[${y}, ${x}]`;
+  document.getElementById('coord-val').textContent=lastXY;
+  toast(`📍 ${lastXY}`);
+  L.circleMarker([y,x],{radius:5,color:'var(--accent)',fillColor:'var(--accent)',fillOpacity:.9,weight:2})
+   .bindPopup(`<span style="font-family:monospace;color:var(--accent);font-size:12px">${lastXY}</span>`)
+   .addTo(map).openPopup();
+}
+function onMapMove(e){
+  if(!coordMode)return;
+  const y=parseFloat(e.latlng.lat.toFixed(6)), x=parseFloat(e.latlng.lng.toFixed(6));
+  document.getElementById('coord-val').textContent=`[${y}, ${x}]  ← 실시간`;
+}
+function copyCoord(){
+  if(!lastXY)return;
+  navigator.clipboard.writeText(lastXY).then(()=>{
+    const btn=document.getElementById('copy-btn');
+    btn.textContent='✓ 복사됨'; btn.classList.add('copied');
+    setTimeout(()=>{btn.textContent='복사';btn.classList.remove('copied');},1600);
+    toast('📋 클립보드에 복사됨');
+  });
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   토스트
+═══════════════════════════════════════════════════════════════ */
+function toast(msg,type=''){
+  const el=document.getElementById('toast');
+  el.textContent=msg;
+  el.className='show'+(type==='warn'?' warn':'');
+  clearTimeout(el._t);
+  el._t=setTimeout(()=>el.classList.remove('show','warn'),2400);
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   시계
+═══════════════════════════════════════════════════════════════ */
+function tick(){
+  const n=new Date();
+  document.getElementById('clock').textContent=
+    n.toLocaleDateString('ko-KR',{year:'numeric',month:'2-digit',day:'2-digit'})+' '+
+    n.toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   시작
+═══════════════════════════════════════════════════════════════ */
+
+/* ═══════════════════════════════════════════════════════════════
+   ██████╗ Firebase 공동작업 설정
+   ══════════════════════════════════════════════════════════════
+   ⚠️  아래 FB_CONFIG 를 실제 Firebase 프로젝트 값으로 교체하세요
+   console.firebase.google.com → 프로젝트 → 앱설정 → SDK 스니펫
+═══════════════════════════════════════════════════════════════ */
+const FB_CONFIG = {
+  apiKey:            "AIzaSyBZXZcXoAlsNQ2vcJTFHq9JCV16_g2Tc0U",
+  authDomain:        "jinseok-4d2e1.firebaseapp.com",
+  databaseURL:       "https://jinseok-4d2e1-default-rtdb.firebaseio.com",
+  projectId:         "jinseok-4d2e1",
+  storageBucket:     "jinseok-4d2e1.firebasestorage.app",
+  messagingSenderId: "557845495499",
+  appId:             "1:557845495499:web:4e243213f4b1aa65fbe54e",
+  measurementId:     "G-WEDWSWCEBD"
+};
+const FB_SITE_KEY = 'hannam3'; // 현장 고유 키 (여러 현장 시 변경)
+
+/* ═══════════════════════════════════════════════════════════════
+   차량계 건설기계 타입 정의
+═══════════════════════════════════════════════════════════════ */
+const EQ_TYPES = [
+  {id:'excavator', emoji:'⛏',  label:'굴삭기',    vtId:'excavator'},
+  {id:'dump',      emoji:'🚛',  label:'덤프트럭',  vtId:'dump_truck'},
+  {id:'crane',     emoji:'🏗',  label:'타워크레인', vtId:'crane_mobile'},
+  {id:'pump',      emoji:'🚒',  label:'펌프카',     vtId:'pump_car'},
+  {id:'mixer',     emoji:'🚚',  label:'믹서트럭',   vtId:'mixer_truck'},
+  {id:'forklift',  emoji:'📦',  label:'지게차',     vtId:'forklift'},
+  {id:'roller',    emoji:'🛞',  label:'다짐롤러',   vtId:'roller'},
+  {id:'loader',    emoji:'🚜',  label:'로더',       vtId:'loader'},
+];
+
+/* ─── 앱 상태 ─── */
+let equipMode = null;        // 현재 선택된 장비 타입
+let eqMarkers  = {};         // { fbKey: L.marker }
+let fbDb = null;
+let eqToolbarOpen = true;
+let eqLayerVisible = true;   // 차량계 건설기계 지도 표시 여부
+
+/* ─── 드로잉 상태 ─── */
+const DRAW_TYPES = ['pedestrian','vehicle','scaffolding'];
+const drawData = {
+  pedestrian:  {lines:[],leafletLines:[],color:'#22c55e',weight:4,dashArray:'12,7',label:'보행자도로',   isArea:false,visible:true},
+  vehicle:     {lines:[],leafletLines:[],color:'#ef4444',weight:6,dashArray:null,  label:'차량이동통로', isArea:false,visible:true},
+  scaffolding: {lines:[],leafletLines:[],color:'#c084fc',weight:2,dashArray:'6,4', label:'비계설치구간', isArea:true, visible:true}
+};
+let drawMode = null;         // { id, pts:[], tempLine, tempDots:[], tempPreview }
+let drawClickTimer = null;
+let legendPlaceMode = null;  // null | { catId }
+
+/* ═══════════════════════════════════════════════════════════════
+   Firebase 초기화
+═══════════════════════════════════════════════════════════════ */
+/* ── Firebase 동기화 헬퍼 ───────────────────────────────── */
+let _fbSyncLock = {};   // zone별 쓰기 잠금 (피드백 루프 방지)
+let _taskDebounce = {}; // 슬라이더 디바운스 타이머
+
+/* Firebase sync flash 효과 */
+function flashSyncIndicator(){
+  const bar = document.getElementById('collab-bar');
+  if(bar){ bar.classList.add('sync-flash'); setTimeout(()=>bar.classList.remove('sync-flash'),700); }
+}
+
+/* 구역 전체 데이터를 Firebase에 저장 */
+function syncZone(zoneId){
+  if(!fbDb) return;
+  const z = SITE_DATA.zones[zoneId];
+  if(!z) return;
+  _fbSyncLock[zoneId] = true;
+  const payload = {
+    tasks:     z.tasks.map(t=>({id:t.id||'t'+Date.now(),name:t.name,pct:t.pct,origPct:t.origPct,color:t.color||'#6b7280'})),
+    workers:   z.workers.map(w=>({id:w.id||'w'+Date.now(),emoji:w.emoji,role:w.role,count:w.count,origCount:w.origCount,color:w.color||'#38bdf8'})),
+    equipment: z.equipment.map(e=>({id:e.id||'e'+Date.now(),type:e.type,label:e.label,count:e.count,status:e.status||'대기중'})),
+    hazards:   z.hazards.map(h=>({id:h.id||'hz'+Date.now(),name:h.name,type:h.type||'',detail:h.detail||'',color:h.color||'#ef4444'})),
+    memo:      {content: z.memo?.content||'', priority: z.memo?.priority||'normal'}
+  };
+  fbDb.ref(`${FB_SITE_KEY}/zones/${zoneId}`).set(payload)
+    .then(()=>{ setTimeout(()=>{ _fbSyncLock[zoneId]=false; }, 500); flashSyncIndicator(); })
+    .catch(e=>console.error('[FB syncZone]',e));
+}
+
+/* 슬라이더용 디바운스 syncZone (600ms) */
+function syncZoneDebounced(zoneId){
+  if(_taskDebounce[zoneId]) clearTimeout(_taskDebounce[zoneId]);
+  _taskDebounce[zoneId] = setTimeout(()=>syncZone(zoneId), 600);
+}
+
+/* 범례 마커 전체를 Firebase에 저장 */
+function syncLegend(){
+  if(!fbDb) return;
+  _fbSyncLock['__legend'] = true;
+  const payload = {};
+  SITE_DATA.legend.forEach(cat=>{
+    payload[cat.id] = cat.markers.map(m=>({
+      id: m.id, pos: m.pos, label: m.label
+    }));
+  });
+  fbDb.ref(`${FB_SITE_KEY}/legend`).set(payload)
+    .then(()=>{ setTimeout(()=>{ _fbSyncLock['__legend']=false; }, 500); })
+    .catch(e=>console.error('[FB syncLegend]',e));
+}
+
+/* 드로잉 라인 전체를 Firebase에 저장 */
+function syncDrawing(){
+  if(!fbDb) return;
+  const payload = {};
+  Object.entries(drawData).forEach(([id,d])=>{
+    payload[id] = d.lines.map((pts,i)=>({pts, ts: Date.now()+i}));
+  });
+  fbDb.ref(`${FB_SITE_KEY}/drawings`).set(payload)
+    .catch(e=>console.error('[FB syncDrawing]',e));
+}
+
+/* Firebase 구역 데이터 → 로컬 SITE_DATA 적용 + UI 갱신 */
+function applyZoneFromFB(zoneId, data){
+  if(_fbSyncLock[zoneId]) return;
+  const z = SITE_DATA.zones[zoneId];
+  if(!z || !data) return;
+  z.tasks     = (data.tasks     || []).map(t=>({...t, origPct:t.origPct??t.pct}));
+  z.workers   = (data.workers   || []).map(w=>({...w, origCount:w.origCount??w.count}));
+  z.equipment = (data.equipment || []);
+  z.hazards   = (data.hazards   || []);
+  z.memo      = data.memo || {content:'', priority:'normal'};
+  /* UI 갱신 (현재 열려있는 구역만) */
+  if(activeZoneId === zoneId) renderTab();
+  refreshMapZone(zoneId);
+  updateSidebarCard(zoneId);
+  updateAllZoneLegendBadges();
+}
+
+/* Firebase 범례 → 로컬 적용 + 지도 갱신 */
+function applyLegendFromFB(data){
+  if(_fbSyncLock['__legend'] || !data) return;
+  SITE_DATA.legend.forEach(cat=>{
+    const fbMarkers = data[cat.id];
+    if(fbMarkers && Array.isArray(fbMarkers)){
+      cat.markers = fbMarkers;
+    }
+  });
+  /* 지도 마커 재빌드 */
+  SITE_DATA.legend.forEach(cat=>{
+    if(mGroups[cat.id]) map.removeLayer(mGroups[cat.id]);
+    mGroups[cat.id] = buildLegendLayer(cat);
+    if(cat.visible) mGroups[cat.id].addTo(map);
+  });
+  renderSidebar();
+  updateAllZoneLegendBadges();
+}
+
+/* Firebase 드로잉 → 로컬 적용 + 지도 갱신 */
+function applyDrawingFromFB(data){
+  if(!data) return;
+  Object.entries(drawData).forEach(([id,d])=>{
+    const fbLines = data[id];
+    if(!fbLines) return;
+    const newPts = Object.values(fbLines).map(l=>l.pts).filter(p=>p&&p.length>=2);
+    /* 현재 로컬 라인 수와 다를 때만 갱신 */
+    if(JSON.stringify(d.lines) === JSON.stringify(newPts)) return;
+    /* 기존 지도 라인 제거 */
+    d.leafletLines.forEach(l=>map.removeLayer(l));
+    d.lines = [];
+    d.leafletLines = [];
+    /* 새 라인 추가 */
+    newPts.forEach(pts=>{
+      const line = L.polyline(pts,{
+        color:d.color, weight:d.weight,
+        dashArray:d.dashArray||'', opacity:.9
+      });
+      line.bindTooltip(
+        `<div style="background:#122030;border:1px solid #1c3650;color:#e2eeff;padding:5px 10px;border-radius:7px;font-size:11px">
+          ${id==='pedestrian'?'🚶':'🚗'} ${d.label}
+          <span style="color:var(--muted);font-size:10px;margin-left:6px">우클릭 삭제</span>
+        </div>`,
+        {direction:'top',opacity:1,className:''}
+      );
+      line.on('contextmenu',(e)=>{ L.DomEvent.stop(e); removeDrawLine(id,line); });
+      if(d.visible) line.addTo(map);
+      d.lines.push(pts);
+      d.leafletLines.push(line);
+    });
+  });
+  renderSidebar();
+}
+
+function initFirebase(){
+  /* Firebase SDK 로드 확인 — 미로드 시 재시도 후 오프라인 처리 */
+  if(typeof firebase === 'undefined'){
+    console.warn('[Firebase] SDK 미로드 — 1.5초 후 재시도');
+    setCollabStatus('connecting','Firebase 로딩 중…');
+    setTimeout(()=>{
+      if(typeof firebase === 'undefined'){
+        console.error('[Firebase] SDK 로드 실패 — 오프라인 모드로 전환');
+        setCollabStatus('offline','오프라인 모드 (Firebase 미연결)');
+        toast('⚠️ Firebase 연결 실패 — 오프라인으로 동작합니다');
+      } else {
+        initFirebase();
+      }
+    }, 1500);
+    return;
+  }
+  try{
+    const app = firebase.initializeApp(FB_CONFIG);
+    fbDb = firebase.database(app);
+
+    /* 연결 상태 */
+    fbDb.ref('.info/connected').on('value', snap=>{
+      if(snap.val()){
+        setCollabStatus('connected','공동작업 연결됨');
+      } else {
+        setCollabStatus('connecting','연결 중…');
+      }
+    });
+
+    /* ── 장비 마커 실시간 수신 ── */
+    const eqRef = fbDb.ref(`${FB_SITE_KEY}/equipment`);
+    eqRef.on('child_added',   snap=>{ renderEqMarker(snap.key, snap.val()); });
+    eqRef.on('child_removed', snap=>{ removeEqMarker(snap.key); });
+    eqRef.on('child_changed', snap=>{ removeEqMarker(snap.key); renderEqMarker(snap.key, snap.val()); });
+
+    /* ── Presence UI — 접속자 추적 ── */
+    const presenceId = 'u_' + Math.random().toString(36).slice(2,8);
+    const presenceRef = fbDb.ref(`${FB_SITE_KEY}/presence/${presenceId}`);
+    presenceRef.set({ts: Date.now(), active: true});
+    presenceRef.onDisconnect().remove();
+
+    /* 다른 접속자 감지 → 아바타 업데이트 */
+    fbDb.ref(`${FB_SITE_KEY}/presence`).on('value', snap=>{
+      const users = snap.val() || {};
+      const others = Object.keys(users).filter(k => k !== presenceId);
+      updatePresenceUI(others.length);
+    });
+
+    /* ── 구역 데이터 실시간 수신 ── */
+    Object.keys(SITE_DATA.zones).forEach(zoneId=>{
+      fbDb.ref(`${FB_SITE_KEY}/zones/${zoneId}`).on('value', snap=>{
+        const data = snap.val();
+        if(data) applyZoneFromFB(zoneId, data);
+      });
+    });
+
+    /* ── 범례 마커 실시간 수신 ── */
+    fbDb.ref(`${FB_SITE_KEY}/legend`).on('value', snap=>{
+      applyLegendFromFB(snap.val());
+    });
+
+    /* ── 드로잉 라인 실시간 수신 ── */
+    fbDb.ref(`${FB_SITE_KEY}/drawings`).on('value', snap=>{
+      applyDrawingFromFB(snap.val());
+    });
+
+
+
+  } catch(e){
+    console.error('[Firebase]', e);
+    setCollabStatus('offline','Firebase 오류');
+  }
+}
+
+function updatePresenceUI(otherCount){
+  const wrap = document.getElementById('presence-wrap');
+  if(!wrap) return;
+  /* 내 아바타는 항상 유지 */
+  const me = wrap.querySelector('.you');
+  if(!me) return;
+  /* 기존 other 아바타 제거 */
+  wrap.querySelectorAll('.other1,.other2,.presence-count').forEach(el=>el.remove());
+  /* 다른 사용자 아바타 추가 */
+  const colors = ['other1','other2'];
+  const labels = ['A','B','C','D','E'];
+  const maxShow = 2;
+  for(let i=0; i<Math.min(otherCount, maxShow); i++){
+    const av = document.createElement('div');
+    av.className = `presence-avatar ${colors[i%colors.length]}`;
+    av.title = `다른 사용자 ${i+1}`;
+    av.textContent = labels[i];
+    wrap.appendChild(av);
+  }
+  if(otherCount > maxShow){
+    const cnt = document.createElement('div');
+    cnt.className = 'presence-count';
+    cnt.textContent = `+${otherCount-maxShow}`;
+    wrap.appendChild(cnt);
+  }
+}
+
+function setCollabStatus(state, msg){
+  const bar  = document.getElementById('collab-bar');
+  const text = document.getElementById('collab-text');
+  if(!bar) return;
+  bar.className = 'collab-bar ' + state;  // connected / connecting / offline
+  // 클래스 재매핑
+  bar.classList.remove('connected','connecting');
+  if(state==='connected') bar.classList.add('connected');
+  else if(state==='connecting') bar.classList.add('connecting');
+  if(text) text.textContent = msg;
+}
+
+function toggleFbHint(){
+  const h = document.getElementById('fb-setup-hint');
+  if(h) h.classList.toggle('show');
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   장비 툴바 렌더링
+═══════════════════════════════════════════════════════════════ */
+function buildEquipToolbar(){
+  const grid = document.getElementById('eq-grid');
+  if(!grid) return;
+  grid.innerHTML = EQ_TYPES.map(t=>`
+    <div class="eq-tb-item" id="eqt-${t.id}" onclick="selectEquipType('${t.id}')" title="${t.label}">
+      <span class="eq-tb-emoji">${t.emoji}</span>
+      <span class="eq-tb-lbl">${t.label}</span>
+    </div>`).join('');
+}
+
+/* 차량계 건설기계 지도 레이어 on/off */
+function toggleEqLayer(){
+  eqLayerVisible = !eqLayerVisible;
+  Object.values(eqMarkers).forEach(mk=>{
+    eqLayerVisible ? mk.addTo(map) : map.removeLayer(mk);
+  });
+  renderSidebar();
+  toast(`🏗 차량계 건설기계 ${eqLayerVisible?'표시됨':'숨겨짐'}`);
+}
+
+function toggleEqToolbar(){
+  eqToolbarOpen = !eqToolbarOpen;
+  const grid = document.getElementById('eq-grid');
+  const hint = document.getElementById('eq-hint');
+  const btn  = document.querySelector('.eq-tb-toggle');
+  if(grid) grid.style.display = eqToolbarOpen ? 'grid' : 'none';
+  if(hint) hint.style.display = eqToolbarOpen ? '' : 'none';
+  if(btn)  btn.textContent = eqToolbarOpen ? '접기' : '펼치기';
+}
+
+function selectEquipType(id){
+  const type = EQ_TYPES.find(t=>t.id===id);
+  if(!type) return;
+  if(equipMode?.id === id){
+    exitEquipMode(); return;
+  }
+  equipMode = type;
+  document.querySelectorAll('.eq-tb-item').forEach(el=>el.classList.remove('selected'));
+  document.getElementById(`eqt-${id}`)?.classList.add('selected');
+  map.getContainer().style.cursor = 'crosshair';
+  const hint = document.getElementById('eq-hint');
+  if(hint){ hint.textContent=`${type.emoji} ${type.label} — 지도 클릭으로 배치`; hint.classList.add('active'); }
+  toast(`🚧 ${type.label} 배치 모드 ON — 지도를 클릭하세요`,'warn');
+  if(coordMode) toggleCoord(); // 좌표 모드와 충돌 방지
+}
+
+function exitEquipMode(){
+  equipMode = null;
+  document.querySelectorAll('.eq-tb-item').forEach(el=>el.classList.remove('selected'));
+  map.getContainer().style.cursor = '';
+  const hint = document.getElementById('eq-hint');
+  if(hint){ hint.textContent='클릭 선택 후 지도에 배치'; hint.classList.remove('active'); }
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   장비 마커 배치
+═══════════════════════════════════════════════════════════════ */
+/* ── 구역 내 점 판별 (Ray-casting) ── */
+function ptInPoly(lat, lng, polygon){
+  let inside=false;
+  for(let i=0,j=polygon.length-1;i<polygon.length;j=i++){
+    const yi=polygon[i][0],xi=polygon[i][1];
+    const yj=polygon[j][0],xj=polygon[j][1];
+    if(((yi>lat)!==(yj>lat))&&(lng<(xj-xi)*(lat-yi)/(yj-yi)+xi)) inside=!inside;
+  }
+  return inside;
+}
+function findZoneForLatLng(lat,lng){
+  for(const zid of Object.keys(SITE_DATA.zones)){
+    const z=SITE_DATA.zones[zid];
+    if(z.polygon&&z.polygon.length>=3&&ptInPoly(lat,lng,z.polygon)) return zid;
+  }
+  return null;
+}
+
+function placeEquipment(latlng){
+  if(!equipMode) return;
+  const sameType = Object.values(eqMarkers).filter(m=>m._eqData?.type===equipMode.id).length;
+  const lat = parseFloat(latlng.lat.toFixed(6)), lng = parseFloat(latlng.lng.toFixed(6));
+  const data = {
+    type:  equipMode.id,
+    emoji: equipMode.emoji,
+    label: `${equipMode.label} #${sameType+1}`,
+    lat, lng,
+    memo:  '',
+    ts:    Date.now()
+  };
+
+  /* ── 구역 자동 감지 → 장비현황 패널 자동 추가 ── */
+  const zid = findZoneForLatLng(lat, lng);
+  if(zid){
+    const vt = VEHICLE_EQUIP_TYPES.find(t=>t.id===(EQ_TYPES.find(e=>e.id===equipMode.id)?.vtId));
+    if(vt){
+      const z = SITE_DATA.zones[zid];
+      const existing = z.equipment.find(e=>e.name===vt.name);
+      if(existing){ existing.count=(existing.count||1)+1; }
+      else { z.equipment.push({emoji:vt.emoji,name:vt.name,count:1,status:'운행중'}); }
+      syncZone(zid);
+      if(activeZoneId===zid) refreshSidebarZone(zid);
+      toast(`🏗 ${data.label} → ${z.label}구역 장비현황 자동 반영됨`);
+    } else {
+      toast(`🏗 ${data.label} 지도에 배치됨`);
+    }
+  } else {
+    toast(`🏗 ${data.label} 지도에 배치됨`);
+  }
+
+  if(fbDb){
+    fbDb.ref(`${FB_SITE_KEY}/equipment`).push(data);
+  } else {
+    const localId='local_'+Date.now()+'_'+Math.random().toString(36).slice(2,7);
+    renderEqMarker(localId, data);
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   장비 마커 렌더링 / 삭제
+═══════════════════════════════════════════════════════════════ */
+function renderEqMarker(key, data){
+  if(!data || !map) return;
+  if(eqMarkers[key]) map.removeLayer(eqMarkers[key]);
+
+  /* Firebase에 저장된 구 이모지 대신 현재 EQ_TYPES 기준으로 항상 최신 이모지 사용 */
+  const currentType = EQ_TYPES.find(t => t.id === data.type);
+  const emoji = currentType ? currentType.emoji : (data.emoji || '🏗');
+  const updatedData = {...data, emoji};
+
+  const hasMemo = updatedData.memo && updatedData.memo.trim();
+  const icon = L.divIcon({
+    html:`<div class="eq-wrap" id="eqwrap-${key}">
+      ${emoji}
+      <div class="eq-del"
+           onclick="event.stopPropagation();confirmDeleteEq('${key}','${updatedData.label}','${emoji}')"
+           title="삭제">✕</div>
+      ${hasMemo ? `<div class="eq-bubble">${updatedData.memo}</div>` : ''}
+    </div>`,
+    iconSize:[40,40], iconAnchor:[20,20], className:''
+  });
+
+  const marker = L.marker([updatedData.lat, updatedData.lng], {icon, draggable:!IS_MOBILE, zIndexOffset:200});
+  marker._eqData = {...updatedData, key};
+
+  /* 클릭 → 메모 편집 팝업 (PC 전용) */
+  marker.on('click', (e)=>{
+    L.DomEvent.stop(e);
+    if(IS_MOBILE||equipMode||drawMode||legendPlaceMode) return;
+    openEqMemoPopup(key, updatedData);
+  });
+
+  marker.bindTooltip(`
+    <div style="background:#122030;border:1px solid #c084fc55;color:#e2eeff;
+                padding:7px 11px;border-radius:8px;font-size:11px;
+                box-shadow:0 4px 16px rgba(0,0,0,.5)">
+      ${emoji} <b>${updatedData.label}</b>
+      ${hasMemo ? `<br><span style="color:#c084fc;font-size:10px">💬 ${updatedData.memo}</span>` : ''}
+      <br><span style="color:#6b93b8;font-size:10px">클릭: 메모 &nbsp;|&nbsp; 드래그: 이동 &nbsp;|&nbsp; 우클릭: 삭제</span>
+    </div>`, {direction:'top', opacity:1, className:''}
+  );
+
+  /* 드래그 → Firebase 위치 업데이트 */
+  marker.on('dragend', ()=>{
+    const ll = marker.getLatLng();
+    const update = {lat: Math.round(ll.lat), lng: Math.round(ll.lng)};
+    if(fbDb && !key.startsWith('local_')){
+      fbDb.ref(`${FB_SITE_KEY}/equipment/${key}`).update(update);
+    }
+  });
+
+  /* 우클릭 → 삭제 */
+  marker.on('contextmenu', ()=>{
+    if(!confirm(`${emoji} ${updatedData.label} 을(를) 삭제하시겠습니까?`)) return;
+    if(fbDb && !key.startsWith('local_')){
+      fbDb.ref(`${FB_SITE_KEY}/equipment/${key}`).remove();
+    } else {
+      removeEqMarker(key);
+    }
+    toast(`🗑 ${data.label} 삭제됨`);
+  });
+
+  if(eqLayerVisible) marker.addTo(map);
+  eqMarkers[key] = marker;
+}
+
+function removeEqMarker(key){
+  if(eqMarkers[key]){ map.removeLayer(eqMarkers[key]); delete eqMarkers[key]; }
+}
+function confirmDeleteEq(key, label, emoji){
+  if(!confirm(`${emoji} ${label}\n삭제하시겠습니까?`)) return;
+  if(fbDb && !key.startsWith('local_')){
+    fbDb.ref(`${FB_SITE_KEY}/equipment/${key}`).remove();
+  } else {
+    removeEqMarker(key);
+  }
+  toast(`${label} 삭제됨`);
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   범례 마커 — 삭제 / 추가 배치
+═══════════════════════════════════════════════════════════════ */
+function deleteLegendMarker(catId, markerId){
+  const cat=SITE_DATA.legend.find(c=>c.id===catId);
+  if(!cat) return;
+  const idx=cat.markers.findIndex(m=>m.id===markerId);
+  if(idx<0) return;
+  const label=cat.markers[idx].label;
+  cat.markers.splice(idx,1);
+  map.removeLayer(mGroups[catId]);
+  mGroups[catId]=buildLegendLayer(cat);
+  if(cat.visible) mGroups[catId].addTo(map);
+  renderSidebar();
+  syncLegend();
+  toast(`🗑 ${label} 삭제됨`);
+}
+
+function startLegendPlace(catId){
+  if(legendPlaceMode&&legendPlaceMode.catId===catId){ exitLegendPlace(); return; }
+  if(drawMode) cancelDraw();
+  if(equipMode) exitEquipMode();
+  legendPlaceMode={catId};
+  map.getContainer().style.cursor='crosshair';
+  const cat=SITE_DATA.legend.find(c=>c.id===catId);
+  toast(`${cat.emoji} ${cat.label} — 지도를 클릭하여 마커 추가`);
+  renderSidebar();
+}
+function exitLegendPlace(){
+  legendPlaceMode=null;
+  map.getContainer().style.cursor='';
+  renderSidebar();
+}
+function placeLegendMarker(latlng){
+  if(!legendPlaceMode) return;
+  const catId=legendPlaceMode.catId;
+  const cat=SITE_DATA.legend.find(c=>c.id===catId);
+  if(!cat) return;
+  const pos=[Math.round(latlng.lat),Math.round(latlng.lng)];
+  const newM={
+    id:'lm_'+Date.now()+'_'+Math.random().toString(36).slice(2,6),
+    pos,
+    label:`${cat.label} ${cat.markers.length+1}`,
+    memo:''
+  };
+  cat.markers.push(newM);
+  if(!cat.visible){ cat.visible=true; }
+  map.removeLayer(mGroups[catId]);
+  mGroups[catId]=buildLegendLayer(cat);
+  mGroups[catId].addTo(map);
+  renderSidebar();
+  syncLegend();
+  toast(`${cat.emoji} ${cat.label} ${cat.markers.length}번 마커 추가됨`);
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   드로잉 — 보행자도로 / 차량이동통로
+═══════════════════════════════════════════════════════════════ */
+function startDraw(id){
+  if(drawMode) cancelDraw();
+  if(equipMode) exitEquipMode();
+  if(legendPlaceMode) exitLegendPlace();
+  drawMode={id,pts:[],tempLine:null,tempDots:[],tempPreview:null};
+  map.doubleClickZoom.disable();
+  map.getContainer().style.cursor='crosshair';
+  document.getElementById('draw-hint-label').textContent=drawData[id].label;
+  document.getElementById('draw-hint').classList.add('show');
+  renderSidebar();
+  toast(`✏️ ${drawData[id].label} — 클릭으로 점 추가, 더블클릭으로 완료`);
+}
+
+function addDrawPoint(latlng){
+  if(!drawMode) return;
+  /* 더블클릭 감지: 250ms 내 두 번째 클릭 → 완료 */
+  if(drawClickTimer){
+    clearTimeout(drawClickTimer);
+    drawClickTimer=null;
+    finishDraw();
+    return;
+  }
+  drawClickTimer=setTimeout(()=>{
+    drawClickTimer=null;
+    if(!drawMode) return;
+    const pt=[Math.round(latlng.lat),Math.round(latlng.lng)];
+    drawMode.pts.push(pt);
+    const d=drawData[drawMode.id];
+    const dot=L.circleMarker(pt,{radius:4,color:d.color,fillColor:d.color,fillOpacity:1,weight:2,interactive:false}).addTo(map);
+    drawMode.tempDots.push(dot);
+    updateTempLine();
+    if(drawMode.pts.length===1) toast('계속 클릭해 경로를 이어주세요 · 더블클릭 또는 [완료]로 마무리');
+  },240);
+}
+
+function updateTempLine(){
+  if(!drawMode||drawMode.pts.length<2) return;
+  if(drawMode.tempLine) map.removeLayer(drawMode.tempLine);
+  const d=drawData[drawMode.id];
+  drawMode.tempLine=L.polyline(drawMode.pts,{
+    color:d.color,weight:d.weight,dashArray:d.dashArray||'',opacity:.8,interactive:false
+  }).addTo(map);
+}
+
+function updateTempPreview(latlng){
+  if(!drawMode||drawMode.pts.length<1) return;
+  if(drawMode.tempPreview) map.removeLayer(drawMode.tempPreview);
+  const pts=[...drawMode.pts,[latlng.lat,latlng.lng]];
+  const d=drawData[drawMode.id];
+  drawMode.tempPreview=L.polyline(pts,{
+    color:d.color,weight:d.weight,dashArray:'5,5',opacity:.45,interactive:false
+  }).addTo(map);
+}
+
+function finishDraw(){
+  if(!drawMode) return;
+  const {id,pts,tempLine,tempDots,tempPreview}=drawMode;
+  tempDots.forEach(dot=>map.removeLayer(dot));
+  if(tempLine) map.removeLayer(tempLine);
+  if(tempPreview) map.removeLayer(tempPreview);
+  if(drawClickTimer){ clearTimeout(drawClickTimer); drawClickTimer=null; }
+  drawMode=null;
+  map.doubleClickZoom.enable();
+  map.getContainer().style.cursor='';
+  document.getElementById('draw-hint').classList.remove('show');
+  const d=drawData[id];
+  const minPts = d.isArea ? 3 : 2;
+  if(pts.length>=minPts){
+    let line;
+    if(d.isArea){
+      /* 비계설치 등 면 영역 — L.polygon */
+      line = L.polygon(pts,{
+        color:d.color, weight:d.weight,
+        dashArray:d.dashArray||'',
+        fillColor:d.color, fillOpacity:0.12, opacity:.9
+      });
+    } else {
+      line = L.polyline(pts,{
+        color:d.color, weight:d.weight,
+        dashArray:d.dashArray||'', opacity:.9
+      });
+    }
+    const emojiMap = {pedestrian:'🚶',vehicle:'🚗',scaffolding:'🪜'};
+    line.bindTooltip(
+      `<div style="background:#122030;border:1px solid #1c3650;color:#e2eeff;padding:5px 10px;border-radius:7px;font-size:11px;box-shadow:0 4px 16px rgba(0,0,0,.5)">
+        ${emojiMap[id]||'✏️'} ${d.label}
+        <span style="color:var(--muted);font-size:10px;margin-left:6px">우클릭 삭제</span>
+      </div>`,
+      {direction:'top',opacity:1,className:''}
+    );
+    line.on('contextmenu',(e)=>{ L.DomEvent.stop(e); removeDrawLine(id,line); });
+    if(d.visible) line.addTo(map);
+    d.lines.push(pts);
+    d.leafletLines.push(line);
+    syncDrawing();
+    toast(`✅ ${d.label} ${d.isArea?'영역':'경로'} 저장됨 (${pts.length}점)`);
+  } else {
+    toast(`⚠️ ${d.isArea?'영역은 3개':'경로는 2개'} 이상의 점이 필요합니다`);
+  }
+  renderSidebar();
+}
+
+function cancelDraw(){
+  if(!drawMode) return;
+  const {tempLine,tempDots,tempPreview}=drawMode;
+  tempDots.forEach(dot=>map.removeLayer(dot));
+  if(tempLine) map.removeLayer(tempLine);
+  if(tempPreview) map.removeLayer(tempPreview);
+  if(drawClickTimer){ clearTimeout(drawClickTimer); drawClickTimer=null; }
+  drawMode=null;
+  map.doubleClickZoom.enable();
+  map.getContainer().style.cursor='';
+  document.getElementById('draw-hint').classList.remove('show');
+  renderSidebar();
+  toast('✏️ 드로잉 취소됨');
+}
+
+function removeDrawLine(id, leafletLine){
+  const d=drawData[id];
+  const idx=d.leafletLines.indexOf(leafletLine);
+  if(idx>=0){
+    map.removeLayer(leafletLine);
+    d.lines.splice(idx,1);
+    d.leafletLines.splice(idx,1);
+    syncDrawing();
+    renderSidebar();
+    toast('🗑 경로 삭제됨');
+  }
+}
+
+/* 사이드바 토글 시 툴바 위치 조정 */
+const _origToggleSB = toggleSB;
+function toggleSB(){
+  _origToggleSB();
+  const toolbar = document.getElementById('eq-toolbar');
+  if(toolbar) toolbar.classList.toggle('sb-closed', !sbOpen);
+}
+
+/* ══════════════════════════════════════════════════════════
+   접속자 관리 + 활동 로그
+══════════════════════════════════════════════════════════ */
+let CURRENT_USER = null; // {name, company, id, initial}
+
+function submitEntry(){
+  const company = (document.getElementById('entry-company')?.value||'').trim();
+  const name    = (document.getElementById('entry-name')?.value||'').trim();
+  const errEl   = document.getElementById('entry-error');
+  if(!company || !name){
+    if(errEl) errEl.classList.add('show');
+    return;
+  }
+  if(errEl) errEl.classList.remove('show');
+  const userId = 'u_' + Date.now() + '_' + Math.random().toString(36).slice(2,6);
+  CURRENT_USER = {
+    name, company, id: userId,
+    initial: name.slice(0,1).toUpperCase()
+  };
+  localStorage.setItem('hn3_user', JSON.stringify(CURRENT_USER));
+  /* 모달 닫기 */
+  const modal = document.getElementById('entry-modal');
+  if(modal){
+    modal.classList.add('hide');
+    setTimeout(()=>modal.remove(), 400);
+  }
+  updateUserBadge();
+  /* Firebase에 접속 기록 */
+  logActivity('접속', null, '현장 접속');
+  toast(`👋 ${name}님 접속했습니다`);
+}
+
+function resetUser(){
+  if(!confirm('사용자 정보를 변경하시겠습니까?')) return;
+  localStorage.removeItem('hn3_user');
+  location.reload();
+}
+
+function updateUserBadge(){
+  if(!CURRENT_USER) return;
+  const av  = document.getElementById('ub-avatar');
+  const nm  = document.getElementById('ub-name');
+  const co  = document.getElementById('ub-company');
+  if(av)  av.textContent  = CURRENT_USER.initial;
+  if(nm)  nm.textContent  = CURRENT_USER.name;
+  if(co)  co.textContent  = CURRENT_USER.company;
+}
+
+function initUserEntry(){
+  const saved = localStorage.getItem('hn3_user');
+  if(saved){
+    try{
+      CURRENT_USER = JSON.parse(saved);
+      /* 기존 접속자 — 모달 스킵 */
+      const modal = document.getElementById('entry-modal');
+      if(modal) modal.remove();
+      updateUserBadge();
+      return;
+    }catch(e){}
+  }
+  /* 신규 접속자 — 모달 표시, 첫 입력란 포커스 */
+  setTimeout(()=>{
+    document.getElementById('entry-company')?.focus();
+  }, 400);
+}
+
+/* ── 활동 로그 ─────────────────────────────────────────── */
+function logActivity(action, zoneId, detail){
+  if(!fbDb || !CURRENT_USER) return;
+  const log = {
+    name:    CURRENT_USER.name,
+    company: CURRENT_USER.company,
+    action,
+    zone:    zoneId || '-',
+    detail:  detail || '',
+    ts:      Date.now(),
+    tsStr:   new Date().toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit'})
+  };
+  fbDb.ref(`${FB_SITE_KEY}/activityLog`).push(log)
+    .catch(e=>console.warn('[ActivityLog]',e));
+}
+
+/* ── 테마 토글 ──────────────────────────────────────────── */
+function toggleTheme(){
+  const html = document.documentElement;
+  const isLight = html.getAttribute('data-theme') === 'light';
+  html.setAttribute('data-theme', isLight ? 'dark' : 'light');
+  localStorage.setItem('hn3_theme', isLight ? 'dark' : 'light');
+  updateThemeIcon(isLight ? 'dark' : 'light');
+  /* Chart.js 테마 컬러 업데이트 */
+  if(_ovChart && activeZoneId){
+    const z=SITE_DATA.zones[activeZoneId];
+    if(z) refreshOverallUI(activeZoneId);
+  }
+}
+function updateThemeIcon(theme){
+  const icon = document.getElementById('theme-icon');
+  if(!icon) return;
+  if(theme === 'light'){
+    /* Moon icon */
+    icon.innerHTML = '<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>';
+  } else {
+    /* Sun icon */
+    icon.innerHTML = '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/>';
+  }
+}
+
+/* ── Chart.js 도넛 초기화 ───────────────────────────────── */
+function initOvChart(z){
+  if(typeof Chart === 'undefined') return;
+  const canvas = document.getElementById('ring-canvas');
+  if(!canvas) return;
+  /* 기존 인스턴스 파괴 */
+  if(_ovChart){ _ovChart.destroy(); _ovChart=null; }
+  const ov = calcOverall(z);
+  const ovc = ovColor(ov);
+  const isDark = document.documentElement.getAttribute('data-theme') !== 'light';
+  const trackColor = isDark ? 'rgba(255,255,255,.07)' : 'rgba(0,0,0,.08)';
+  _ovChart = new Chart(canvas, {
+    type: 'doughnut',
+    data: {
+      datasets:[{
+        data: [ov, 100-ov],
+        backgroundColor: [ovc, trackColor],
+        borderWidth: 0,
+        borderRadius: 4,
+      }]
+    },
+    options:{
+      cutout: '72%',
+      rotation: -90,
+      circumference: 360,
+      animation:{ duration: 700, easing:'easeInOutQuart' },
+      plugins:{ legend:{display:false}, tooltip:{enabled:false} },
+      responsive: false,
+    }
+  });
+}
+
+window.addEventListener('load',()=>{
+  /* 저장된 테마 복원 */
+  const savedTheme = localStorage.getItem('hn3_theme') || 'dark';
+  document.documentElement.setAttribute('data-theme', savedTheme);
+  updateThemeIcon(savedTheme);
+
+  tick(); setInterval(tick,1000);
+  initUserEntry();
+  initMap();
+  buildEquipToolbar();
+  initFirebase();
+});
+
+document.addEventListener('keydown',(e)=>{
+  if(e.key==='Escape'){
+    if(drawMode) cancelDraw();
+    else if(equipMode) exitEquipMode();
+    else if(legendPlaceMode) exitLegendPlace();
+  }
+});
+
+/* ═══════════════════════════════════════════════════════════════
+   MOBILE VIEWER — 모바일 감지 및 동작
+═══════════════════════════════════════════════════════════════ */
+const IS_MOBILE = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent)
+  || window.innerWidth <= 768;
+
+if(IS_MOBILE){
+  document.body.classList.add('is-mobile');
+}
+
+/* 모바일 네비 탭 전환 */
+let _mobileTab = 'map'; // 'map' | 'zones' | 'legend'
+
+function mobileNavClick(tab){
+  if(!IS_MOBILE) return;
+  _mobileTab = tab;
+
+  // 버튼 active 상태
+  ['map','zones','legend'].forEach(t=>{
+    const btn = document.getElementById('mnav-'+t);
+    if(btn) btn.classList.toggle('active', t===tab);
+  });
+
+  const sidebar = document.getElementById('sidebar');
+  const panel   = document.getElementById('panel');
+
+  if(tab === 'map'){
+    sidebar && sidebar.classList.remove('mobile-open');
+    // 패널은 그대로 유지 (열려있으면 유지)
+  } else if(tab === 'zones'){
+    sidebar && sidebar.classList.add('mobile-open');
+    panel   && panel.classList.remove('open');
+  } else if(tab === 'legend'){
+    sidebar && sidebar.classList.remove('mobile-open');
+    panel   && panel.classList.remove('open');
+    // 범례는 지도 위 레이어로 표시
+    // 범례 탭이 사이드바 하단에 있는 경우 해당 섹션 스크롤로 접근
+    sidebar && sidebar.classList.add('mobile-open');
+    // 범례 섹션으로 스크롤
+    setTimeout(()=>{
+      const lgSec = document.querySelector('.lg-section') || document.getElementById('legend-section');
+      if(lgSec) lgSec.scrollIntoView({behavior:'smooth'});
+    }, 400);
+  }
+}
+
+/* 모바일에서 구역 클릭 시 패널 열릴 때 맵 탭 활성화 */
+if(IS_MOBILE){
+  const origOpenPanel = typeof openPanel !== 'undefined' ? openPanel : null;
+  const _origFocusZone = focusZone;
+  focusZone = function(id){
+    _origFocusZone(id);
+    if(IS_MOBILE){
+      // 구역목록 시트 닫기
+      const sidebar = document.getElementById('sidebar');
+      sidebar && sidebar.classList.remove('mobile-open');
+      // 맵 탭 활성
+      ['map','zones','legend'].forEach(t=>{
+        const btn = document.getElementById('mnav-'+t);
+        if(btn) btn.classList.toggle('active', t==='map');
+      });
+      _mobileTab = 'map';
+    }
+  };
+}
+
+/* 패널이 열릴 때 모바일에선 사이드바 닫기 */
+const _origOpenPanel = openPanel;
+openPanel = function(id){
+  _origOpenPanel(id);
+  if(IS_MOBILE){
+    const sidebar = document.getElementById('sidebar');
+    sidebar && sidebar.classList.remove('mobile-open');
+  }
+};
+
+/* 패널 닫을 때 모바일 탭 초기화 */
+const _origClosePanel = closePanel;
+closePanel = function(){
+  _origClosePanel();
+  if(IS_MOBILE){
+    ['map','zones','legend'].forEach(t=>{
+      const btn = document.getElementById('mnav-'+t);
+      if(btn) btn.classList.toggle('active', t==='map');
+    });
+    _mobileTab = 'map';
+  }
+};
+
+/* 사이드바 외부 탭 시 닫기 (모바일) */
+if(IS_MOBILE){
+  document.addEventListener('click', function(e){
+    const sidebar = document.getElementById('sidebar');
+    if(!sidebar) return;
+    if(!sidebar.classList.contains('mobile-open')) return;
+    if(sidebar.contains(e.target)) return;
+    if(e.target.closest('#mobile-nav')) return;
+    sidebar.classList.remove('mobile-open');
+    ['map','zones','legend'].forEach(t=>{
+      const btn = document.getElementById('mnav-'+t);
+      if(btn) btn.classList.toggle('active', t==='map');
+    });
+    _mobileTab = 'map';
+  });
+}
+
+
+/* ═══════════════════════════════════════════════════════════════
+   범용 메모 팝업 시스템 (장비 + 모든 범례 마커 공용)
+═══════════════════════════════════════════════════════════════ */
+let _memoSaveFn = null;
+
+/* 범용 팝업 열기 — onSave(memo) 콜백 방식 */
+function openMemoPopup(emoji, label, currentMemo, accentColor, onSave){
+  _memoSaveFn = onSave;
+  const popup = document.getElementById('eq-memo-popup');
+  document.getElementById('em-emoji').textContent = emoji || '📍';
+  document.getElementById('em-label').textContent = label || '메모';
+  document.getElementById('em-text').value = currentMemo || '';
+  /* 포인트 컬러 적용 */
+  const saveBtn = popup.querySelector('.em-save');
+  if(saveBtn && accentColor){
+    saveBtn.style.borderColor = accentColor+'88';
+    saveBtn.style.color = accentColor;
+    saveBtn.style.background = accentColor+'22';
+  }
+  popup.style.left = '50%';
+  popup.style.top  = '50%';
+  popup.style.transform = 'translate(-50%,-50%)';
+  popup.classList.add('show');
+  setTimeout(()=>document.getElementById('em-text').focus(), 80);
+}
+
+/* 장비 마커용 래퍼 (기존 코드 호환) */
+function openEqMemoPopup(key, data){
+  openMemoPopup(data.emoji, data.label, data.memo, '#c084fc', (memo)=>{
+    if(fbDb && !key.startsWith('local_')){
+      fbDb.ref(`${FB_SITE_KEY}/equipment/${key}`).update({memo});
+    } else if(eqMarkers[key]){
+      const d = {...eqMarkers[key]._eqData, memo};
+      eqMarkers[key]._eqData = d;
+      renderEqMarker(key, d);
+    }
+    toast(memo ? `💬 메모 저장됨: "${memo.slice(0,20)}${memo.length>20?'…':''}"` : '💬 메모 삭제됨');
+  });
+}
+
+function closeEqMemoPopup(){
+  document.getElementById('eq-memo-popup').classList.remove('show');
+  _memoSaveFn = null;
+  /* 버튼 색상 초기화 */
+  const saveBtn = document.querySelector('#eq-memo-popup .em-save');
+  if(saveBtn){
+    saveBtn.style.borderColor='';
+    saveBtn.style.color='';
+    saveBtn.style.background='';
+  }
+}
+
+function saveEqMemo(){
+  const memo = document.getElementById('em-text').value.trim();
+  const fn = _memoSaveFn;
+  closeEqMemoPopup();
+  if(fn) fn(memo);
+}
+
+/* ESC로 팝업 닫기 */
+document.addEventListener('keydown', e=>{
+  if(e.key==='Escape' && document.getElementById('eq-memo-popup')?.classList.contains('show')){
+    closeEqMemoPopup();
+  }
+});
+
+</script>
+
+<!-- ══ 모바일 하단 네비바 ════════════════════════════════ -->
+<div id="mobile-nav">
+  <button class="mnav-btn active" id="mnav-map" onclick="mobileNavClick('map')">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+      <polygon points="3 6 9 3 15 6 21 3 21 18 15 21 9 18 3 21"/>
+      <line x1="9" y1="3" x2="9" y2="18"/><line x1="15" y1="6" x2="15" y2="21"/>
+    </svg>
+    지도
+  </button>
+  <div class="mnav-divider"></div>
+  <button class="mnav-btn" id="mnav-zones" onclick="mobileNavClick('zones')">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/>
+      <rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/>
+    </svg>
+    구역목록
+  </button>
+  <div class="mnav-divider"></div>
+  <button class="mnav-btn" id="mnav-legend" onclick="mobileNavClick('legend')">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="12" cy="12" r="10"/>
+      <line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+    </svg>
+    범례
+  </button>
+</div>
+
+<!-- 모바일 뷰어 배지 -->
+<div id="mobile-viewer-badge">👁 뷰어 모드</div>
+
+<!-- 모바일 지도 힌트 -->
+<div id="mobile-map-hint">핀치로 확대 · 구역 탭 → 현황 보기</div>
+
+
+<!-- ══ 장비 메모 팝업 ═══════════════════════════════════════ -->
+<div id="eq-memo-popup">
+  <div class="em-title">
+    <span id="em-emoji">🏗</span>
+    <span id="em-label">장비 메모</span>
+  </div>
+  <textarea id="em-text" placeholder="메모를 입력하세요&#10;(예: 오전 작업 완료, 오후 이동 예정)"></textarea>
+  <div class="em-hint">💬 저장하면 지도에 말풍선으로 표시됩니다</div>
+  <div class="em-btns">
+    <button class="em-save" onclick="saveEqMemo()">저장</button>
+    <button class="em-cancel" onclick="closeEqMemoPopup()">닫기</button>
+  </div>
+</div>
+
+
+
+</body>
+</html>
